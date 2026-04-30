@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  background: #f7f8f5;
+  color: #1f2933;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(77, 107, 83, 0.08), transparent 260px),
+    #f7f8f5;
+  color: #1f2933;
+}
+
+a {
+  color: inherit;
+}
+
+input,
+textarea,
+select {
+  color: #1f2933;
+}
+
+.markdown {
+  line-height: 1.65;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  margin-top: 1rem;
+  font-weight: 700;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol {
+  margin-top: 0.75rem;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.25rem;
+}
+
+.markdown code {
+  border-radius: 0.25rem;
+  background: rgba(31, 41, 51, 0.08);
+  padding: 0.1rem 0.25rem;
+}

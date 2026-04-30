@@ -1,0 +1,64 @@
+import { z } from "zod";
+import { taskStatusEnum } from "@/db/schema";
+
+const requiredText = z.string().trim().min(1, "Required");
+const markdown = z.string().max(20000).default("");
+const score = z.coerce.number().int().min(1).max(5);
+const optionalDate = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value ? new Date(value) : null))
+  .refine((value) => value === null || !Number.isNaN(value.getTime()), "Invalid date");
+
+export const projectSchema = z.object({
+  name: requiredText,
+  description: markdown
+});
+
+export const componentSchema = z.object({
+  name: requiredText,
+  descriptionMarkdown: markdown
+});
+
+export const taskSchema = z
+  .object({
+    name: requiredText,
+    descriptionMarkdown: markdown,
+    estimatedMinutes: z.coerce.number().int().min(0),
+    startAt: optionalDate,
+    endAt: optionalDate,
+    complexity: score,
+    risk: score,
+    impact: score,
+    differentiation: score,
+    priorityOffset: z.coerce.number().min(-99).max(99),
+    status: z.enum(taskStatusEnum.enumValues),
+    componentIds: z.array(z.string().uuid()).default([])
+  })
+  .refine((data) => !data.startAt || !data.endAt || data.endAt >= data.startAt, {
+    message: "End must be after start",
+    path: ["endAt"]
+  });
+
+export function formString(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
+}
+
+export function parseTaskForm(formData: FormData) {
+  return taskSchema.parse({
+    name: formString(formData, "name"),
+    descriptionMarkdown: formString(formData, "descriptionMarkdown"),
+    estimatedMinutes: formString(formData, "estimatedMinutes"),
+    startAt: formString(formData, "startAt"),
+    endAt: formString(formData, "endAt"),
+    complexity: formString(formData, "complexity"),
+    risk: formString(formData, "risk"),
+    impact: formString(formData, "impact"),
+    differentiation: formString(formData, "differentiation"),
+    priorityOffset: formString(formData, "priorityOffset"),
+    status: formString(formData, "status"),
+    componentIds: formData.getAll("componentIds")
+  });
+}
