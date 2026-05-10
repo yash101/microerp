@@ -11,7 +11,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-export const taskStatusEnum = pgEnum("task_status", ["candidate", "included", "cut", "later"]);
+export const taskStatusEnum = pgEnum("task_status", ["candidate", "included", "complete", "cut", "later"]);
+export const expenseStatusEnum = pgEnum("expense_status", ["draft", "submitted", "approved", "reimbursed", "rejected"]);
 
 export const users = pgTable(
   "users",
@@ -102,9 +103,52 @@ export const taskComponents = pgTable(
   })
 );
 
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    vendor: text("vendor").notNull(),
+    recipient: text("recipient").notNull().default(""),
+    category: text("category").notNull().default("General"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    spentAt: timestamp("spent_at", { withTimezone: true }).notNull(),
+    status: expenseStatusEnum("status").notNull().default("draft"),
+    notes: text("notes").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    projectIdIdx: index("expenses_project_id_idx").on(table.projectId),
+    statusIdx: index("expenses_status_idx").on(table.status),
+    spentAtIdx: index("expenses_spent_at_idx").on(table.spentAt)
+  })
+);
+
+export const expenseArtifacts = pgTable(
+  "expense_artifacts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    dataBase64: text("data_base64").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    expenseIdIdx: index("expense_artifacts_expense_id_idx").on(table.expenseId)
+  })
+);
+
 export const projectRelations = relations(projects, ({ many }) => ({
   components: many(components),
-  tasks: many(tasks)
+  tasks: many(tasks),
+  expenses: many(expenses)
 }));
 
 export const userRelations = relations(users, ({ many }) => ({
@@ -146,9 +190,27 @@ export const taskComponentRelations = relations(taskComponents, ({ one }) => ({
   })
 }));
 
+export const expenseRelations = relations(expenses, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [expenses.projectId],
+    references: [projects.id]
+  }),
+  artifacts: many(expenseArtifacts)
+}));
+
+export const expenseArtifactRelations = relations(expenseArtifacts, ({ one }) => ({
+  expense: one(expenses, {
+    fields: [expenseArtifacts.expenseId],
+    references: [expenses.id]
+  })
+}));
+
 export type Project = typeof projects.$inferSelect;
 export type Component = typeof components.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type ExpenseArtifact = typeof expenseArtifacts.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];
+export type ExpenseStatus = (typeof expenseStatusEnum.enumValues)[number];

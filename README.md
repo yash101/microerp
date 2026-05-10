@@ -93,7 +93,7 @@ Components have information:
 - impact: 1-5
 - differentiation: 1-5
 - priorityOffset: number
-- status: "candidate" | "included" | "cut" | "later"
+- status: "candidate" | "included" | "complete" | "cut" | "later"
 - createdAt
 - updatedAt
 

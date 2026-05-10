@@ -1,21 +1,32 @@
-import type { Component, Project, Task, TaskStatus } from "@/db/schema";
+import type { Component, Expense, ExpenseArtifact, ExpenseStatus, Project, Task, TaskStatus } from "@/db/schema";
 import {
   createComponentAction,
+  createExpenseAction,
   createProjectAction,
   createTaskAction,
+  updateExpenseAction,
   updateComponentAction,
   updateProjectAction,
   updateTaskAction
 } from "@/lib/actions";
 import { Field, inputClass, SubmitButton, textareaClass } from "@/components/ui";
 
-const statuses: TaskStatus[] = ["candidate", "included", "cut", "later"];
+const statuses: TaskStatus[] = ["candidate", "included", "complete", "cut", "later"];
+const expenseStatuses: ExpenseStatus[] = ["draft", "submitted", "approved", "reimbursed", "rejected"];
+const expenseCategories = ["General", "Travel", "Meals", "Software", "Supplies", "Services", "Equipment"];
 
 function datetimeValue(value: Date | null) {
   if (!value) return "";
   const offset = value.getTimezoneOffset();
   const local = new Date(value.getTime() - offset * 60 * 1000);
   return local.toISOString().slice(0, 16);
+}
+
+function dateValue(value: Date | null) {
+  if (!value) return "";
+  const offset = value.getTimezoneOffset();
+  const local = new Date(value.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 10);
 }
 
 export function ProjectForm({ project }: { project?: Project }) {
@@ -56,6 +67,76 @@ export function ComponentForm({
         />
       </Field>
       <SubmitButton>{component ? "Save component" : "Add component"}</SubmitButton>
+    </form>
+  );
+}
+
+export function ExpenseForm({
+  projectId,
+  expense
+}: {
+  projectId: string;
+  expense?: Expense & { artifacts?: Pick<ExpenseArtifact, "id" | "fileName" | "byteSize">[] };
+}) {
+  const action = expense
+    ? updateExpenseAction.bind(null, projectId, expense.id)
+    : createExpenseAction.bind(null, projectId);
+
+  return (
+    <form action={action} className="grid gap-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <Field label="Vendor">
+          <input className={inputClass} name="vendor" required placeholder="Acme Supplies" defaultValue={expense?.vendor} />
+        </Field>
+        <Field label="Recipient">
+          <input className={inputClass} name="recipient" required placeholder="Jamie Lee" defaultValue={expense?.recipient} />
+        </Field>
+        <Field label="Amount">
+          <input
+            className={inputClass}
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            defaultValue={expense?.amount}
+          />
+        </Field>
+        <Field label="Spent date">
+          <input className={inputClass} name="spentAt" type="date" required defaultValue={dateValue(expense?.spentAt ?? null)} />
+        </Field>
+        <Field label="Status">
+          <select className={inputClass} name="status" defaultValue={expense?.status ?? "draft"} disabled={Boolean(expense)}>
+            {expenseStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+          {expense ? <input type="hidden" name="status" value={expense.status} /> : null}
+        </Field>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Category">
+          <select className={inputClass} name="category" defaultValue={expense?.category ?? "General"}>
+            {expenseCategories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Receipts" hint="Attach PDF, image, or document files up to 5 MB each.">
+          <input className={inputClass} name="artifacts" type="file" multiple />
+        </Field>
+      </div>
+
+      <Field label="Notes">
+        <textarea className={textareaClass} name="notes" defaultValue={expense?.notes} />
+      </Field>
+
+      <SubmitButton>{expense ? "Save expense" : "Add expense"}</SubmitButton>
     </form>
   );
 }

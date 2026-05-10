@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { taskStatusEnum } from "@/db/schema";
+import { expenseStatusEnum, taskStatusEnum } from "@/db/schema";
 
 const requiredText = z.string().trim().min(1, "Required");
 const markdown = z.string().max(20000).default("");
@@ -28,6 +28,16 @@ export const authSchema = z.object({
 export const componentSchema = z.object({
   name: requiredText,
   descriptionMarkdown: markdown
+});
+
+export const expenseSchema = z.object({
+  vendor: requiredText,
+  recipient: requiredText,
+  category: requiredText.default("General"),
+  amount: z.coerce.number().positive().max(9999999999.99),
+  spentAt: optionalDate.refine((value) => value !== null, "Required"),
+  status: z.enum(expenseStatusEnum.enumValues),
+  notes: markdown
 });
 
 export const taskSchema = z
@@ -69,5 +79,17 @@ export function parseTaskForm(formData: FormData) {
     priorityOffset: formString(formData, "priorityOffset"),
     status: formString(formData, "status"),
     componentIds: formData.getAll("componentIds")
+  });
+}
+
+export function parseExpenseForm(formData: FormData) {
+  return expenseSchema.parse({
+    vendor: formString(formData, "vendor"),
+    recipient: formString(formData, "recipient"),
+    category: formString(formData, "category") || "General",
+    amount: formString(formData, "amount"),
+    spentAt: formString(formData, "spentAt"),
+    status: formString(formData, "status") || "draft",
+    notes: formString(formData, "notes")
   });
 }

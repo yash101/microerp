@@ -2,7 +2,15 @@ import "server-only";
 
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { components, projects, taskComponents, tasks, type TaskStatus } from "@/db/schema";
+import {
+  components,
+  expenseArtifacts,
+  expenses,
+  projects,
+  taskComponents,
+  tasks,
+  type TaskStatus
+} from "@/db/schema";
 import { calculateTaskPriority } from "@/lib/priority";
 
 export async function listProjects(userId: string) {
@@ -98,12 +106,89 @@ export async function getTask(userId: string, projectId: string, taskId: string)
   };
 }
 
+export async function listExpenses(userId: string, projectId: string) {
+  const expenseRows = await db
+    .select()
+    .from(expenses)
+    .innerJoin(projects, eq(expenses.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId)))
+    .orderBy(desc(expenses.spentAt), desc(expenses.createdAt));
+
+  const artifactRows = await db
+    .select({
+      id: expenseArtifacts.id,
+      expenseId: expenseArtifacts.expenseId,
+      fileName: expenseArtifacts.fileName,
+      contentType: expenseArtifacts.contentType,
+      byteSize: expenseArtifacts.byteSize,
+      createdAt: expenseArtifacts.createdAt
+    })
+    .from(expenseArtifacts)
+    .innerJoin(expenses, eq(expenseArtifacts.expenseId, expenses.id))
+    .innerJoin(projects, eq(expenses.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId)))
+    .orderBy(asc(expenseArtifacts.fileName));
+
+  return expenseRows.map(({ expenses: expense }) => ({
+    ...expense,
+    artifacts: artifactRows.filter((artifact) => artifact.expenseId === expense.id)
+  }));
+}
+
+export async function getExpense(userId: string, projectId: string, expenseId: string) {
+  const [expense] = await db
+    .select()
+    .from(expenses)
+    .innerJoin(projects, eq(expenses.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId), eq(expenses.id, expenseId)))
+    .limit(1);
+
+  if (!expense) return null;
+
+  const artifacts = await db
+    .select({
+      id: expenseArtifacts.id,
+      expenseId: expenseArtifacts.expenseId,
+      fileName: expenseArtifacts.fileName,
+      contentType: expenseArtifacts.contentType,
+      byteSize: expenseArtifacts.byteSize,
+      createdAt: expenseArtifacts.createdAt
+    })
+    .from(expenseArtifacts)
+    .where(eq(expenseArtifacts.expenseId, expenseId))
+    .orderBy(asc(expenseArtifacts.fileName));
+
+  return {
+    ...expense.expenses,
+    artifacts
+  };
+}
+
+export async function getExpenseArtifact(userId: string, projectId: string, artifactId: string) {
+  const [artifact] = await db
+    .select({
+      id: expenseArtifacts.id,
+      fileName: expenseArtifacts.fileName,
+      contentType: expenseArtifacts.contentType,
+      byteSize: expenseArtifacts.byteSize,
+      dataBase64: expenseArtifacts.dataBase64
+    })
+    .from(expenseArtifacts)
+    .innerJoin(expenses, eq(expenseArtifacts.expenseId, expenses.id))
+    .innerJoin(projects, eq(expenses.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId), eq(expenseArtifacts.id, artifactId)))
+    .limit(1);
+
+  return artifact ?? null;
+}
+
 export function groupTasksByStatus<T extends { status: TaskStatus; priority: { priority: number } }>(
   taskRows: T[]
 ) {
   const grouped: Record<TaskStatus, T[]> = {
     candidate: [],
     included: [],
+    complete: [],
     cut: [],
     later: []
   };

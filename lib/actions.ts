@@ -4,7 +4,18 @@ import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { components, projects, taskComponents, taskStatusEnum, tasks, type TaskStatus } from "@/db/schema";
+import {
+  components,
+  expenseArtifacts,
+  expenses,
+  expenseStatusEnum,
+  projects,
+  taskComponents,
+  taskStatusEnum,
+  tasks,
+  type ExpenseStatus,
+  type TaskStatus
+} from "@/db/schema";
 import {
   createSession,
   createUser,
@@ -13,7 +24,16 @@ import {
   validateCredentials,
   validateSignupCode
 } from "@/lib/auth";
-import { authSchema, componentSchema, formString, parseTaskForm, projectSchema } from "@/lib/validation";
+import {
+  authSchema,
+  componentSchema,
+  formString,
+  parseExpenseForm,
+  parseTaskForm,
+  projectSchema
+} from "@/lib/validation";
+
+const maxArtifactBytes = 5 * 1024 * 1024;
 
 function dateOrNull(value: Date | null) {
   return value && !Number.isNaN(value.getTime()) ? value : null;
@@ -60,6 +80,40 @@ async function assertTaskInProject(userId: string, projectId: string, taskId: st
   if (!task) {
     throw new Error("Task not found in project.");
   }
+}
+
+async function getExpenseInProject(userId: string, projectId: string, expenseId: string) {
+  const [expense] = await db
+    .select({ id: expenses.id, status: expenses.status })
+    .from(expenses)
+    .innerJoin(projects, eq(expenses.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId), eq(expenses.id, expenseId)))
+    .limit(1);
+
+  if (!expense) {
+    throw new Error("Expense not found in project.");
+  }
+
+  return expense;
+}
+
+async function assertExpenseInProject(userId: string, projectId: string, expenseId: string) {
+  await getExpenseInProject(userId, projectId, expenseId);
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function expenseFiles(formData: FormData) {
+  return formData
+    .getAll("artifacts")
+    .filter((value): value is File => value instanceof File && value.size > 0);
 }
 
 export async function loginAction(formData: FormData) {
@@ -263,4 +317,153 @@ export async function deleteTaskAction(projectId: string, taskId: string) {
   await db.delete(tasks).where(and(eq(tasks.projectId, projectId), eq(tasks.id, taskId)));
   revalidatePath(`/projects/${projectId}`);
   redirect(`/projects/${projectId}`);
+}
+
+export async function createExpenseAction(projectId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
+  const input = parseExpenseForm(formData);
+  const files = expenseFiles(formData);
+
+  if (files.some((file) => file.size > maxArtifactBytes)) {
+    throw new Error("Receipt files must be 5 MB or smaller.");
+  }
+
+  const [expense] = await db
+    .insert(expenses)
+    .values({
+      projectId,
+      vendor: input.vendor,
+      recipient: input.recipient,
+      category: input.category,
+      amount: input.amount.toFixed(2),
+      spentAt: input.spentAt,
+      status: input.status,
+      notes: input.notes
+    })
+    .returning({ id: expenses.id });
+
+  if (files.length > 0) {
+    const artifacts = await Promise.all(
+      files.map(async (file) => ({
+        expenseId: expense.id,
+        fileName: file.name || "receipt",
+        contentType: file.type || "application/octet-stream",
+        byteSize: file.size,
+        dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+      }))
+    );
+    await db.insert(expenseArtifacts).values(artifacts);
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/expenses`);
+  redirect(`/projects/${projectId}/expenses`);
+}
+
+export async function updateExpenseAction(projectId: string, expenseId: string, formData: FormData) {
+  const user = await requireSession();
+  const expense = await getExpenseInProject(user.id, projectId, expenseId);
+  if (expense.status !== "draft") {
+    throw new Error("Only draft expenses can be edited.");
+  }
+
+  const input = parseExpenseForm(formData);
+  const files = expenseFiles(formData);
+
+  if (files.some((file) => file.size > maxArtifactBytes)) {
+    throw new Error("Receipt files must be 5 MB or smaller.");
+  }
+
+  await db
+    .update(expenses)
+    .set({
+      vendor: input.vendor,
+      recipient: input.recipient,
+      category: input.category,
+      amount: input.amount.toFixed(2),
+      spentAt: input.spentAt,
+      status: input.status,
+      notes: input.notes,
+      updatedAt: new Date()
+    })
+    .where(and(eq(expenses.projectId, projectId), eq(expenses.id, expenseId)));
+
+  if (files.length > 0) {
+    const artifacts = await Promise.all(
+      files.map(async (file) => ({
+        expenseId,
+        fileName: file.name || "receipt",
+        contentType: file.type || "application/octet-stream",
+        byteSize: file.size,
+        dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+      }))
+    );
+    await db.insert(expenseArtifacts).values(artifacts);
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/expenses`);
+  redirect(`/projects/${projectId}/expenses`);
+}
+
+export async function updateExpenseStatusFromFormAction(projectId: string, expenseId: string, formData: FormData) {
+  const user = await requireSession();
+  const expense = await getExpenseInProject(user.id, projectId, expenseId);
+  const status = formString(formData, "status") as ExpenseStatus;
+  if (!expenseStatusEnum.enumValues.includes(status)) {
+    throw new Error("Invalid expense status.");
+  }
+  const allowedStatuses: Record<ExpenseStatus, ExpenseStatus[]> = {
+    draft: ["submitted"],
+    submitted: ["draft", "approved", "rejected"],
+    approved: ["draft", "reimbursed"],
+    reimbursed: [],
+    rejected: ["draft", "reimbursed"]
+  };
+
+  if (!allowedStatuses[expense.status].includes(status)) {
+    throw new Error("Invalid expense status transition.");
+  }
+
+  if (status === "submitted") {
+    const [completeExpense] = await db
+      .select({
+        vendor: expenses.vendor,
+        recipient: expenses.recipient,
+        category: expenses.category,
+        amount: expenses.amount,
+        spentAt: expenses.spentAt
+      })
+      .from(expenses)
+      .where(and(eq(expenses.projectId, projectId), eq(expenses.id, expenseId)))
+      .limit(1);
+
+    if (
+      !completeExpense ||
+      !completeExpense.vendor.trim() ||
+      !completeExpense.recipient.trim() ||
+      !completeExpense.category.trim() ||
+      Number.parseFloat(completeExpense.amount) <= 0 ||
+      !completeExpense.spentAt
+    ) {
+      throw new Error("Fill out vendor, recipient, category, amount, and spent date before submitting.");
+    }
+  }
+
+  await db
+    .update(expenses)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(expenses.projectId, projectId), eq(expenses.id, expenseId)));
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/expenses`);
+}
+
+export async function deleteExpenseAction(projectId: string, expenseId: string) {
+  const user = await requireSession();
+  await assertExpenseInProject(user.id, projectId, expenseId);
+  await db.delete(expenses).where(and(eq(expenses.projectId, projectId), eq(expenses.id, expenseId)));
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/expenses`);
+  redirect(`/projects/${projectId}/expenses`);
 }
