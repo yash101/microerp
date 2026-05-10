@@ -1,4 +1,5 @@
 import {
+  index,
   integer,
   numeric,
   pgEnum,
@@ -12,8 +13,43 @@ import { relations } from "drizzle-orm";
 
 export const taskStatusEnum = pgEnum("task_status", ["candidate", "included", "cut", "later"]);
 
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    username: text("username").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    passwordSalt: text("password_salt").notNull(),
+    passwordIterations: integer("password_iterations").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    usernameIdx: index("users_username_idx").on(table.username)
+  })
+);
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index("sessions_user_id_idx").on(table.userId),
+    tokenHashIdx: index("sessions_token_hash_idx").on(table.tokenHash),
+    expiresAtIdx: index("sessions_expires_at_idx").on(table.expiresAt)
+  })
+);
+
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -71,6 +107,18 @@ export const projectRelations = relations(projects, ({ many }) => ({
   tasks: many(tasks)
 }));
 
+export const userRelations = relations(users, ({ many }) => ({
+  sessions: many(sessions),
+  projects: many(projects)
+}));
+
+export const sessionRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id]
+  })
+}));
+
 export const componentRelations = relations(components, ({ one, many }) => ({
   project: one(projects, {
     fields: [components.projectId],
@@ -101,4 +149,6 @@ export const taskComponentRelations = relations(taskComponents, ({ one }) => ({
 export type Project = typeof projects.$inferSelect;
 export type Component = typeof components.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type Session = typeof sessions.$inferSelect;
 export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];

@@ -4,8 +4,8 @@ import { listProjects } from "@/lib/data";
 import { ButtonLink, EmptyState, PageShell } from "@/components/ui";
 
 export default async function HomePage() {
-  await requireSession();
-  const projects = await listProjects();
+  const user = await requireSession();
+  const projects = await listProjects(user.id);
 
   if (projects[0]) {
     redirect(`/projects/${projects[0].id}`);

@@ -9,9 +9,9 @@ export default async function EditProjectPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const { projectId } = await params;
-  const project = await getProject(projectId);
+  const project = await getProject(user.id, projectId);
 
   if (!project) notFound();
 

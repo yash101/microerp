@@ -16,6 +16,15 @@ export const projectSchema = z.object({
   description: markdown
 });
 
+export const authSchema = z.object({
+  username: requiredText
+    .min(3, "Username must be at least 3 characters")
+    .max(120, "Username is too long")
+    .transform((value) => value.toLowerCase()),
+  password: z.string().min(12, "Password must be at least 12 characters").max(200),
+  signupCode: z.string().min(1, "Signup code is required").optional()
+});
+
 export const componentSchema = z.object({
   name: requiredText,
   descriptionMarkdown: markdown

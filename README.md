@@ -20,13 +20,15 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 Copy `.env.example` to `.env` and set strong values for:
 
 - `DATABASE_URL`
-- `APP_USERNAME`
-- `APP_PASSWORD`
 - `AUTH_SECRET`
+- `SIGNUP_CODE`
 
 On this dev target, `.env` has been generated locally and is ignored by git.
 The app should stay bound to localhost unless it is placed behind a properly
 secured tunnel or reverse proxy.
+
+Accounts are created through `/signup`. Signup requires `SIGNUP_CODE`, which
+keeps a public dev target from becoming an open registration endpoint.
 
 ## Scripts
 
@@ -35,6 +37,8 @@ secured tunnel or reverse proxy.
 - `npm run lint` runs ESLint.
 - `npm run test` runs Vitest.
 - `npm run db:migrate` applies Drizzle migrations.
+- `npm run preview` builds and previews the app in Cloudflare's Workers runtime.
+- `npm run deploy` builds and deploys the app to Cloudflare Workers.
 
 ## Design
 
@@ -103,9 +107,47 @@ Computed:
 - componentId
 
 ## Authn/Authz
-- Single-user login with credentials from `APP_USERNAME` and `APP_PASSWORD`.
-- Sessions use a signed, HTTP-only cookie with `AUTH_SECRET`.
+- Username/password signup and login.
+- Passwords are salted and hashed with PBKDF2-SHA-256.
+- Sessions are stored in Postgres as hashed random tokens.
+- Session cookies are HTTP-only, same-site, and secure in production.
+- Projects are scoped to the signed-in user.
 
 ## Database
 - Postgres
 - Use Docker Compose to run it locally.
+
+## Cloudflare deployment
+
+This app is configured for Cloudflare Workers via the OpenNext Cloudflare
+adapter. Pages is not the right target for this full-stack SSR app.
+
+For production Postgres, create a Cloudflare Hyperdrive config for your
+database and add its ID to `wrangler.jsonc` under the commented `hyperdrive`
+binding. The app will use `HYPERDRIVE.connectionString` when that binding is
+present, and `DATABASE_URL` otherwise.
+
+Set production secrets before deploying:
+
+```sh
+npx wrangler secret put AUTH_SECRET
+npx wrangler secret put SIGNUP_CODE
+```
+
+If not using Hyperdrive, also set:
+
+```sh
+npx wrangler secret put DATABASE_URL
+```
+
+Then deploy:
+
+```sh
+npm run deploy
+```
+
+## Kubernetes deployment
+
+For the single-server Kubernetes deployment at
+`jankdrive.apps.dev.devya.sh`, see
+[`docs/deploy-kubernetes.md`](docs/deploy-kubernetes.md).

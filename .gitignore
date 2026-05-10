@@ -11,6 +11,9 @@
 # next.js
 /.next/
 /out/
+.open-next/
+cloudflare-env.d.ts
+.dev.vars
 
 # production
 /build

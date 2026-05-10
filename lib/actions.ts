@@ -5,29 +5,56 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { components, projects, taskComponents, taskStatusEnum, tasks, type TaskStatus } from "@/db/schema";
-import { createSession, destroySession, validateCredentials } from "@/lib/auth";
-import { componentSchema, formString, parseTaskForm, projectSchema } from "@/lib/validation";
+import {
+  createSession,
+  createUser,
+  destroySession,
+  requireSession,
+  validateCredentials,
+  validateSignupCode
+} from "@/lib/auth";
+import { authSchema, componentSchema, formString, parseTaskForm, projectSchema } from "@/lib/validation";
 
 function dateOrNull(value: Date | null) {
   return value && !Number.isNaN(value.getTime()) ? value : null;
 }
 
-async function allowedComponentIds(projectId: string, componentIds: string[]) {
+async function allowedComponentIds(userId: string, projectId: string, componentIds: string[]) {
   if (componentIds.length === 0) return [];
 
   const rows = await db
     .select({ id: components.id })
     .from(components)
-    .where(and(eq(components.projectId, projectId), inArray(components.id, componentIds)));
+    .innerJoin(projects, eq(components.projectId, projects.id))
+    .where(
+      and(
+        eq(projects.userId, userId),
+        eq(components.projectId, projectId),
+        inArray(components.id, componentIds)
+      )
+    );
 
   return rows.map((row) => row.id);
 }
 
-async function assertTaskInProject(projectId: string, taskId: string) {
+async function assertProjectForUser(userId: string, projectId: string) {
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.userId, userId), eq(projects.id, projectId)))
+    .limit(1);
+
+  if (!project) {
+    throw new Error("Project not found.");
+  }
+}
+
+async function assertTaskInProject(userId: string, projectId: string, taskId: string) {
   const [task] = await db
     .select({ id: tasks.id })
     .from(tasks)
-    .where(and(eq(tasks.projectId, projectId), eq(tasks.id, taskId)))
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(tasks.projectId, projectId), eq(tasks.id, taskId)))
     .limit(1);
 
   if (!task) {
@@ -36,14 +63,38 @@ async function assertTaskInProject(projectId: string, taskId: string) {
 }
 
 export async function loginAction(formData: FormData) {
-  const username = formString(formData, "username");
-  const password = formString(formData, "password");
+  const input = authSchema.pick({ username: true, password: true }).parse({
+    username: formString(formData, "username"),
+    password: formString(formData, "password")
+  });
 
-  if (!validateCredentials(username, password)) {
+  const user = await validateCredentials(input.username, input.password);
+  if (!user) {
     redirect("/login?error=1");
   }
 
-  await createSession();
+  await createSession(user.id);
+  redirect("/");
+}
+
+export async function signupAction(formData: FormData) {
+  const input = authSchema.parse({
+    username: formString(formData, "username"),
+    password: formString(formData, "password"),
+    signupCode: formString(formData, "signupCode")
+  });
+
+  if (!input.signupCode || !validateSignupCode(input.signupCode)) {
+    redirect("/signup?error=code");
+  }
+
+  try {
+    const user = await createUser(input.username, input.password);
+    await createSession(user.id);
+  } catch {
+    redirect("/signup?error=user");
+  }
+
   redirect("/");
 }
 
@@ -53,32 +104,42 @@ export async function logoutAction() {
 }
 
 export async function createProjectAction(formData: FormData) {
+  const user = await requireSession();
   const input = projectSchema.parse({
     name: formString(formData, "name"),
     description: formString(formData, "description")
   });
-  const [project] = await db.insert(projects).values(input).returning({ id: projects.id });
+  const [project] = await db.insert(projects).values({ ...input, userId: user.id }).returning({ id: projects.id });
   revalidatePath("/");
   redirect(`/projects/${project.id}`);
 }
 
 export async function updateProjectAction(projectId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
   const input = projectSchema.parse({
     name: formString(formData, "name"),
     description: formString(formData, "description")
   });
-  await db.update(projects).set({ ...input, updatedAt: new Date() }).where(eq(projects.id, projectId));
+  await db
+    .update(projects)
+    .set({ ...input, updatedAt: new Date() })
+    .where(and(eq(projects.userId, user.id), eq(projects.id, projectId)));
   revalidatePath(`/projects/${projectId}`);
   redirect(`/projects/${projectId}`);
 }
 
 export async function deleteProjectAction(projectId: string) {
-  await db.delete(projects).where(eq(projects.id, projectId));
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
+  await db.delete(projects).where(and(eq(projects.userId, user.id), eq(projects.id, projectId)));
   revalidatePath("/");
   redirect("/");
 }
 
 export async function createComponentAction(projectId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
   const input = componentSchema.parse({
     name: formString(formData, "name"),
     descriptionMarkdown: formString(formData, "descriptionMarkdown")
@@ -89,6 +150,8 @@ export async function createComponentAction(projectId: string, formData: FormDat
 }
 
 export async function updateComponentAction(projectId: string, componentId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
   const input = componentSchema.parse({
     name: formString(formData, "name"),
     descriptionMarkdown: formString(formData, "descriptionMarkdown")
@@ -102,14 +165,18 @@ export async function updateComponentAction(projectId: string, componentId: stri
 }
 
 export async function deleteComponentAction(projectId: string, componentId: string) {
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
   await db.delete(components).where(and(eq(components.projectId, projectId), eq(components.id, componentId)));
   revalidatePath(`/projects/${projectId}`);
   redirect(`/projects/${projectId}/components`);
 }
 
 export async function createTaskAction(projectId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
   const input = parseTaskForm(formData);
-  const componentIds = await allowedComponentIds(projectId, input.componentIds);
+  const componentIds = await allowedComponentIds(user.id, projectId, input.componentIds);
   const [task] = await db
     .insert(tasks)
     .values({
@@ -139,9 +206,10 @@ export async function createTaskAction(projectId: string, formData: FormData) {
 }
 
 export async function updateTaskAction(projectId: string, taskId: string, formData: FormData) {
-  await assertTaskInProject(projectId, taskId);
+  const user = await requireSession();
+  await assertTaskInProject(user.id, projectId, taskId);
   const input = parseTaskForm(formData);
-  const componentIds = await allowedComponentIds(projectId, input.componentIds);
+  const componentIds = await allowedComponentIds(user.id, projectId, input.componentIds);
   await db
     .update(tasks)
     .set({
@@ -172,7 +240,8 @@ export async function updateTaskAction(projectId: string, taskId: string, formDa
 }
 
 export async function updateTaskStatusAction(projectId: string, taskId: string, status: TaskStatus) {
-  await assertTaskInProject(projectId, taskId);
+  const user = await requireSession();
+  await assertTaskInProject(user.id, projectId, taskId);
   await db
     .update(tasks)
     .set({ status, updatedAt: new Date() })
@@ -189,7 +258,8 @@ export async function updateTaskStatusFromFormAction(projectId: string, taskId: 
 }
 
 export async function deleteTaskAction(projectId: string, taskId: string) {
-  await assertTaskInProject(projectId, taskId);
+  const user = await requireSession();
+  await assertTaskInProject(user.id, projectId, taskId);
   await db.delete(tasks).where(and(eq(tasks.projectId, projectId), eq(tasks.id, taskId)));
   revalidatePath(`/projects/${projectId}`);
   redirect(`/projects/${projectId}`);

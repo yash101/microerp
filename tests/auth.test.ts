@@ -1,26 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { validateCredentialPair } from "@/lib/auth-core";
+import { constantTimeEquals, hashPassword, verifyPassword, createSessionToken, hashSessionToken } from "@/lib/auth-core";
 
-describe("validateCredentialPair", () => {
-  it("accepts the configured username and password", () => {
-    expect(
-      validateCredentialPair({
-        username: "planner",
-        password: "secret",
-        expectedUsername: "planner",
-        expectedPassword: "secret"
+describe("auth-core", () => {
+  it("verifies a hashed password", async () => {
+    const passwordRecord = await hashPassword("a secure test password");
+
+    await expect(
+      verifyPassword({
+        password: "a secure test password",
+        expectedHash: passwordRecord.hash,
+        salt: passwordRecord.salt,
+        iterations: passwordRecord.iterations
       })
-    ).toBe(true);
+    ).resolves.toBe(true);
   });
 
-  it("rejects either mismatched field", () => {
-    expect(
-      validateCredentialPair({
-        username: "planner",
-        password: "wrong",
-        expectedUsername: "planner",
-        expectedPassword: "secret"
+  it("rejects an incorrect password", async () => {
+    const passwordRecord = await hashPassword("a secure test password");
+
+    await expect(
+      verifyPassword({
+        password: "wrong password",
+        expectedHash: passwordRecord.hash,
+        salt: passwordRecord.salt,
+        iterations: passwordRecord.iterations
       })
-    ).toBe(false);
+    ).resolves.toBe(false);
+  });
+
+  it("hashes session tokens without keeping the raw token", async () => {
+    const token = createSessionToken();
+    const tokenHash = await hashSessionToken(token);
+
+    expect(token).not.toEqual(tokenHash);
+    expect(tokenHash).toHaveLength(43);
+  });
+
+  it("compares strings without early length success", () => {
+    expect(constantTimeEquals("same", "same")).toBe(true);
+    expect(constantTimeEquals("same", "different")).toBe(false);
   });
 });

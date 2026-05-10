@@ -13,9 +13,12 @@ export default async function ComponentsPage({
   params: Promise<{ projectId: string }>;
   searchParams: Promise<{ edit?: string }>;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const [{ projectId }, query] = await Promise.all([params, searchParams]);
-  const [project, componentRows] = await Promise.all([getProject(projectId), listComponents(projectId)]);
+  const [project, componentRows] = await Promise.all([
+    getProject(user.id, projectId),
+    listComponents(user.id, projectId)
+  ]);
 
   if (!project) notFound();
 

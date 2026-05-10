@@ -9,12 +9,12 @@ export default async function EditTaskPage({
 }: {
   params: Promise<{ projectId: string; taskId: string }>;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const { projectId, taskId } = await params;
   const [project, task, componentRows] = await Promise.all([
-    getProject(projectId),
-    getTask(projectId, taskId),
-    listComponents(projectId)
+    getProject(user.id, projectId),
+    getTask(user.id, projectId, taskId),
+    listComponents(user.id, projectId)
   ]);
 
   if (!project || !task) notFound();

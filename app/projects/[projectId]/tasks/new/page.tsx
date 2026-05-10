@@ -9,9 +9,12 @@ export default async function NewTaskPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const { projectId } = await params;
-  const [project, componentRows] = await Promise.all([getProject(projectId), listComponents(projectId)]);
+  const [project, componentRows] = await Promise.all([
+    getProject(user.id, projectId),
+    listComponents(user.id, projectId)
+  ]);
 
   if (!project) notFound();
 

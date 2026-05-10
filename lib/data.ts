@@ -5,37 +5,46 @@ import { db } from "@/db";
 import { components, projects, taskComponents, tasks, type TaskStatus } from "@/db/schema";
 import { calculateTaskPriority } from "@/lib/priority";
 
-export async function listProjects() {
-  return db.select().from(projects).orderBy(asc(projects.name));
+export async function listProjects(userId: string) {
+  return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(asc(projects.name));
 }
 
-export async function getProject(projectId: string) {
-  const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+export async function getProject(userId: string, projectId: string) {
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.userId, userId), eq(projects.id, projectId)))
+    .limit(1);
   return project ?? null;
 }
 
-export async function listComponents(projectId: string) {
-  return db
+export async function listComponents(userId: string, projectId: string) {
+  const rows = await db
     .select()
     .from(components)
-    .where(eq(components.projectId, projectId))
+    .innerJoin(projects, eq(components.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(components.projectId, projectId)))
     .orderBy(asc(components.name));
+
+  return rows.map((row) => row.components);
 }
 
-export async function getComponent(projectId: string, componentId: string) {
+export async function getComponent(userId: string, projectId: string, componentId: string) {
   const [component] = await db
     .select()
     .from(components)
-    .where(and(eq(components.projectId, projectId), eq(components.id, componentId)))
+    .innerJoin(projects, eq(components.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(components.projectId, projectId), eq(components.id, componentId)))
     .limit(1);
-  return component ?? null;
+  return component?.components ?? null;
 }
 
-export async function listTasks(projectId: string) {
+export async function listTasks(userId: string, projectId: string) {
   const taskRows = await db
     .select()
     .from(tasks)
-    .where(eq(tasks.projectId, projectId))
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(tasks.projectId, projectId)))
     .orderBy(desc(tasks.updatedAt));
 
   const componentRows = await db
@@ -46,9 +55,10 @@ export async function listTasks(projectId: string) {
     })
     .from(taskComponents)
     .innerJoin(components, eq(taskComponents.componentId, components.id))
-    .where(eq(components.projectId, projectId));
+    .innerJoin(projects, eq(components.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(components.projectId, projectId)));
 
-  return taskRows.map((task) => {
+  return taskRows.map(({ tasks: task }) => {
     const priority = calculateTaskPriority(task);
     return {
       ...task,
@@ -60,11 +70,12 @@ export async function listTasks(projectId: string) {
   });
 }
 
-export async function getTask(projectId: string, taskId: string) {
+export async function getTask(userId: string, projectId: string, taskId: string) {
   const [task] = await db
     .select()
     .from(tasks)
-    .where(and(eq(tasks.projectId, projectId), eq(tasks.id, taskId)))
+    .innerJoin(projects, eq(tasks.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(tasks.projectId, projectId), eq(tasks.id, taskId)))
     .limit(1);
 
   if (!task) return null;
@@ -76,12 +87,13 @@ export async function getTask(projectId: string, taskId: string) {
     })
     .from(taskComponents)
     .innerJoin(components, eq(taskComponents.componentId, components.id))
-    .where(and(eq(taskComponents.taskId, taskId), eq(components.projectId, projectId)))
+    .innerJoin(projects, eq(components.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(taskComponents.taskId, taskId), eq(components.projectId, projectId)))
     .orderBy(asc(components.name));
 
   return {
-    ...task,
-    priority: calculateTaskPriority(task),
+    ...task.tasks,
+    priority: calculateTaskPriority(task.tasks),
     components: assignedComponents
   };
 }

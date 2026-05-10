@@ -1,3 +1,4 @@
+NEXTJS_ENV=development
 DATABASE_URL=postgres://microerp:microerp@localhost:5432/microerp
 AUTH_SECRET=replace-with-a-long-random-string
 SIGNUP_CODE=replace-with-a-long-random-signup-code

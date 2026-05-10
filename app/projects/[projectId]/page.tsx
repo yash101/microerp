@@ -20,13 +20,13 @@ export default async function ProjectPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
-  await requireSession();
+  const user = await requireSession();
   const { projectId } = await params;
   const [project, projects, taskRows, componentRows] = await Promise.all([
-    getProject(projectId),
-    listProjects(),
-    listTasks(projectId),
-    listComponents(projectId)
+    getProject(user.id, projectId),
+    listProjects(user.id),
+    listTasks(user.id, projectId),
+    listComponents(user.id, projectId)
   ]);
 
   if (!project) notFound();

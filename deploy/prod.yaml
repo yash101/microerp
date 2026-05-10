@@ -1,0 +1,308 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: microerp
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: microerp-secret-bootstrap
+  namespace: microerp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: microerp-secret-bootstrap
+  namespace: microerp
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["microerp-secrets"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: microerp-secret-bootstrap
+  namespace: microerp
+subjects:
+  - kind: ServiceAccount
+    name: microerp-secret-bootstrap
+    namespace: microerp
+roleRef:
+  kind: Role
+  name: microerp-secret-bootstrap
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: microerp-secret-bootstrap
+  namespace: microerp
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: microerp-secret-bootstrap
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              if kubectl get secret microerp-secrets -n microerp >/dev/null 2>&1; then
+                echo "microerp-secrets already exists; leaving existing values untouched."
+                exit 0
+              fi
+
+              postgres_password="$(head -c 48 /dev/urandom | base64 | tr -d '\n')"
+              auth_secret="$(head -c 64 /dev/urandom | base64 | tr -d '\n')"
+              signup_code="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+
+              kubectl create secret generic microerp-secrets \
+                -n microerp \
+                --from-literal=POSTGRES_PASSWORD="${postgres_password}" \
+                --from-literal=AUTH_SECRET="${auth_secret}" \
+                --from-literal=SIGNUP_CODE="${signup_code}"
+
+              echo "Created microerp-secrets with generated POSTGRES_PASSWORD, AUTH_SECRET, and SIGNUP_CODE."
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: microerp-postgres-data
+  namespace: microerp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: microerp-postgres
+  namespace: microerp
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: microerp-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microerp-postgres
+  namespace: microerp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: microerp-postgres
+  template:
+    metadata:
+      labels:
+        app: microerp-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              value: microerp
+            - name: POSTGRES_DB
+              value: microerp
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: microerp-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - microerp
+                - -d
+                - microerp
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - microerp
+                - -d
+                - microerp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: microerp-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: microerp-postgres
+  namespace: microerp
+spec:
+  selector:
+    app: microerp-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: microerp-migrate
+  namespace: microerp
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: jankdrive:latest
+          imagePullPolicy: Never
+          command: ["npm", "run", "db:migrate"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: microerp-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgres://microerp:$(POSTGRES_PASSWORD)@microerp-postgres.microerp.svc.cluster.local:5432/microerp"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microerp-web
+  namespace: microerp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: microerp-web
+  template:
+    metadata:
+      labels:
+        app: microerp-web
+    spec:
+      containers:
+        - name: web
+          image: jankdrive:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: microerp-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgres://microerp:$(POSTGRES_PASSWORD)@microerp-postgres.microerp.svc.cluster.local:5432/microerp"
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: microerp-secrets
+                  key: AUTH_SECRET
+            - name: SIGNUP_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: microerp-secrets
+                  key: SIGNUP_CODE
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: microerp-web
+  namespace: microerp
+spec:
+  selector:
+    app: microerp-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: microerp-web
+  namespace: microerp
+  annotations:
+    acme.cert-manager.io/http01-ingress-class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - jankdrive.apps.dev.devya.sh
+      secretName: jankdrive-apps-dev-devya-sh-tls
+  rules:
+    - host: jankdrive.apps.dev.devya.sh
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: microerp-web
+                port:
+                  number: 80
