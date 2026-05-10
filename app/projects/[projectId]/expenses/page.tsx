@@ -30,7 +30,7 @@ const nextStatuses: Record<ExpenseStatus, ExpenseStatus[]> = {
   submitted: ["draft", "approved", "rejected"],
   approved: ["draft", "reimbursed"],
   reimbursed: [],
-  rejected: ["draft", "reimbursed"]
+  rejected: ["draft"]
 };
 
 function amountValue(amount: string) {
@@ -131,7 +131,7 @@ export default async function ExpensesPage({
 
           <div className="divide-y divide-ink/10">
             {expenses.map((expense) => (
-              <article key={expense.id} className="grid gap-4 p-4 xl:grid-cols-[1fr_18rem]">
+              <article key={expense.id} className="grid gap-4 p-4 xl:grid-cols-[1fr_10rem]">
                 <div>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -183,10 +183,7 @@ export default async function ExpensesPage({
                 {expense.status === "reimbursed" ? null : (
                   <div className="grid content-start gap-3">
                     <form action={updateExpenseStatusFromFormAction.bind(null, project.id, expense.id)}>
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* <span className={statusButtonClass(expense.status, expense.status)}>
-                          {statusLabels[expense.status]}
-                        </span> */}
+                      <div className="grid grid-cols-1 gap-2">
                         {nextStatuses[expense.status].map((status) => (
                           <button
                             key={status}
