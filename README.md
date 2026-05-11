@@ -1,10 +1,12 @@
 # Micro ERP
 
+![jank](docs/jankdrive.png)
+
 ## (non)Enterprise Resource Planning
 
 Just a tiny simple app for resource planning, prioritization and basic expense tracking. Does the bare minimum, not more.
 
-Called Jankdrive, named after SpaceX warpdrive, has little to nothing common with it though so that's where the similarities end.
+Called Jankdrive, named after SpaceX warpdrive, which has little to nothing in common, except the name, which is where the similarities end.
 
 You can think of it as that junkyard car you bought, but it has an engine, but the transmission blew up so you have to push it to your destination.
 
@@ -85,13 +87,13 @@ kubectl config use-context ${k3d_context}
 
 # build/import image
 docker build -t jankdrive:latest .
-k3d image import jankdrive:latest -c ${kube_context}
+k3d image import jankdrive:latest -c ${k3d_context}
 
 # delete old migration job
-kubectl --context {kube_context} -n microerp delete job microerp-migrate --ignore-not-found
+kubectl --context ${kube_context} -n microerp delete job microerp-migrate --ignore-not-found
 
 # set up new job
-kubectl --context {kube_context} apply -f deploy/prod.yaml
+kubectl --context ${kube_context} apply -f deploy/prod.yaml
 
 # roll out new pods (chatgpt recommended this but I think the rest of the steps can be skipped)
 kubectl --context ${kube_context} -n microerp rollout restart deploy/microerp-web
