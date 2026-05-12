@@ -1,9 +1,14 @@
 import "server-only";
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  conversationAttachments,
+  conversationMessagePeople,
+  conversationMessages,
+  conversationPeople,
   components,
+  customers,
   expenseArtifacts,
   expenses,
   projects,
@@ -180,6 +185,233 @@ export async function getExpenseArtifact(userId: string, projectId: string, arti
     .limit(1);
 
   return artifact ?? null;
+}
+
+function searchPattern(query: string) {
+  const trimmed = query.trim();
+  return trimmed ? `%${trimmed}%` : "";
+}
+
+function dateOrNull(value: Date | string | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function timestampMs(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+export async function listConversationCustomers(userId: string, query = "") {
+  const pattern = searchPattern(query);
+  const where = pattern
+    ? and(
+        eq(customers.userId, userId),
+        or(ilike(customers.name, pattern), ilike(customers.descriptionMarkdown, pattern))
+      )
+    : eq(customers.userId, userId);
+
+  const rows = await db
+    .select({
+      id: customers.id,
+      userId: customers.userId,
+      name: customers.name,
+      descriptionMarkdown: customers.descriptionMarkdown,
+      createdAt: customers.createdAt,
+      updatedAt: customers.updatedAt,
+      firstContactAt: sql<Date | null>`min(${conversationMessages.createdAt})`
+    })
+    .from(customers)
+    .leftJoin(conversationMessages, eq(conversationMessages.customerId, customers.id))
+    .where(where)
+    .groupBy(
+      customers.id,
+      customers.userId,
+      customers.name,
+      customers.descriptionMarkdown,
+      customers.createdAt,
+      customers.updatedAt
+    )
+    .orderBy(asc(customers.name))
+    .limit(50);
+
+  return rows.map((customer) => ({
+    ...customer,
+    firstContactAt: dateOrNull(customer.firstContactAt)
+  }));
+}
+
+async function hydrateConversationMessages<
+  T extends {
+    id: string;
+    customerId: string;
+  }
+>(messages: T[]) {
+  if (messages.length === 0) return [];
+
+  const messageIds = messages.map((message) => message.id);
+  const participantRows = await db
+    .select({
+      messageId: conversationMessagePeople.messageId,
+      id: conversationPeople.id,
+      name: conversationPeople.name
+    })
+    .from(conversationMessagePeople)
+    .innerJoin(conversationPeople, eq(conversationMessagePeople.personId, conversationPeople.id))
+    .where(inArray(conversationMessagePeople.messageId, messageIds))
+    .orderBy(asc(conversationPeople.name));
+
+  const attachmentRows = await db
+    .select({
+      id: conversationAttachments.id,
+      messageId: conversationAttachments.messageId,
+      kind: conversationAttachments.kind,
+      label: conversationAttachments.label,
+      url: conversationAttachments.url,
+      fileName: conversationAttachments.fileName,
+      contentType: conversationAttachments.contentType,
+      byteSize: conversationAttachments.byteSize,
+      createdAt: conversationAttachments.createdAt
+    })
+    .from(conversationAttachments)
+    .where(inArray(conversationAttachments.messageId, messageIds))
+    .orderBy(asc(conversationAttachments.label));
+
+  return messages.map((message) => ({
+    ...message,
+    people: participantRows
+      .filter((person) => person.messageId === message.id)
+      .map((person) => ({ id: person.id, name: person.name })),
+    attachments: attachmentRows.filter((attachment) => attachment.messageId === message.id)
+  }));
+}
+
+export async function listConversationTimeline(userId: string, query = "") {
+  const pattern = searchPattern(query);
+  const where = pattern
+    ? and(
+        eq(customers.userId, userId),
+        or(
+          ilike(customers.name, pattern),
+          ilike(conversationMessages.title, pattern),
+          ilike(conversationMessages.shortDescription, pattern),
+          ilike(conversationMessages.bodyMarkdown, pattern)
+        )
+      )
+    : eq(customers.userId, userId);
+
+  const rows = await db
+    .select({
+      id: conversationMessages.id,
+      customerId: conversationMessages.customerId,
+      title: conversationMessages.title,
+      shortDescription: conversationMessages.shortDescription,
+      bodyMarkdown: conversationMessages.bodyMarkdown,
+      createdAt: conversationMessages.createdAt,
+      updatedAt: conversationMessages.updatedAt,
+      customer: {
+        id: customers.id,
+        name: customers.name
+      }
+    })
+    .from(conversationMessages)
+    .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .where(where)
+    .orderBy(desc(conversationMessages.createdAt))
+    .limit(50);
+
+  return (await hydrateConversationMessages(rows)).sort((left, right) => timestampMs(left.createdAt) - timestampMs(right.createdAt));
+}
+
+export async function getCustomerWithConversations(userId: string, customerId: string) {
+  const [customer] = await db
+    .select()
+    .from(customers)
+    .where(and(eq(customers.userId, userId), eq(customers.id, customerId)))
+    .limit(1);
+
+  if (!customer) return null;
+
+  const rows = await db
+    .select({
+      id: conversationMessages.id,
+      customerId: conversationMessages.customerId,
+      title: conversationMessages.title,
+      shortDescription: conversationMessages.shortDescription,
+      bodyMarkdown: conversationMessages.bodyMarkdown,
+      createdAt: conversationMessages.createdAt,
+      updatedAt: conversationMessages.updatedAt,
+      customer: {
+        id: customers.id,
+        name: customers.name
+      }
+    })
+    .from(conversationMessages)
+    .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .where(and(eq(customers.userId, userId), eq(conversationMessages.customerId, customerId)))
+    .orderBy(asc(conversationMessages.createdAt));
+
+  const messages = await hydrateConversationMessages(rows);
+
+  return {
+    ...customer,
+    firstContactAt: messages[0]?.createdAt ?? null,
+    messages
+  };
+}
+
+export async function getConversationMessage(userId: string, customerId: string, messageId: string) {
+  const [message] = await db
+    .select({
+      id: conversationMessages.id,
+      customerId: conversationMessages.customerId,
+      title: conversationMessages.title,
+      shortDescription: conversationMessages.shortDescription,
+      bodyMarkdown: conversationMessages.bodyMarkdown,
+      createdAt: conversationMessages.createdAt,
+      updatedAt: conversationMessages.updatedAt,
+      customer: {
+        id: customers.id,
+        name: customers.name
+      }
+    })
+    .from(conversationMessages)
+    .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .where(
+      and(
+        eq(customers.userId, userId),
+        eq(conversationMessages.customerId, customerId),
+        eq(conversationMessages.id, messageId)
+      )
+    )
+    .limit(1);
+
+  if (!message) return null;
+
+  const [hydrated] = await hydrateConversationMessages([message]);
+  return hydrated ?? null;
+}
+
+export async function getConversationAttachment(userId: string, attachmentId: string) {
+  const [attachment] = await db
+    .select({
+      id: conversationAttachments.id,
+      kind: conversationAttachments.kind,
+      label: conversationAttachments.label,
+      url: conversationAttachments.url,
+      fileName: conversationAttachments.fileName,
+      contentType: conversationAttachments.contentType,
+      byteSize: conversationAttachments.byteSize,
+      dataBase64: conversationAttachments.dataBase64
+    })
+    .from(conversationAttachments)
+    .innerJoin(conversationMessages, eq(conversationAttachments.messageId, conversationMessages.id))
+    .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .where(and(eq(customers.userId, userId), eq(conversationAttachments.id, attachmentId)))
+    .limit(1);
+
+  return attachment ?? null;
 }
 
 export function groupTasksByStatus<T extends { status: TaskStatus; priority: { priority: number } }>(

@@ -57,9 +57,9 @@ function statusButtonClass(status: ExpenseStatus, currentStatus: ExpenseStatus) 
     return "inline-flex h-10 items-center justify-center rounded-md bg-ink px-3 text-sm font-semibold text-white";
   }
   if (status === "rejected") {
-    return "inline-flex h-10 items-center justify-center rounded-md bg-red-700 px-3 text-sm font-semibold text-white transition hover:bg-red-800";
+    return "inline-flex h-10 cursor-pointer items-center justify-center rounded-md bg-red-700 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-800 hover:shadow active:scale-[0.98] active:bg-red-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss";
   }
-  return "inline-flex h-10 items-center justify-center rounded-md border border-ink/15 bg-white px-3 text-sm font-semibold text-ink transition hover:border-ink/30";
+  return "inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-ink/15 bg-white px-3 text-sm font-semibold text-ink shadow-sm transition hover:border-ink/30 hover:bg-paper active:scale-[0.98] active:bg-ink/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss";
 }
 
 export default async function ExpensesPage({

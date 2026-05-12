@@ -19,10 +19,10 @@ export function ButtonLink({
     <Link
       href={href}
       className={clsx(
-        "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-semibold transition",
-        tone === "primary" && "bg-ink text-white hover:bg-black",
-        tone === "secondary" && "border border-ink/15 bg-white text-ink hover:border-ink/30",
-        tone === "danger" && "bg-red-700 text-white hover:bg-red-800"
+        "inline-flex h-10 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-semibold transition active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss",
+        tone === "primary" && "bg-ink text-white shadow-sm hover:bg-black hover:shadow active:bg-ink/90",
+        tone === "secondary" && "border border-ink/15 bg-white text-ink shadow-sm hover:border-ink/30 hover:bg-paper active:bg-ink/5",
+        tone === "danger" && "bg-red-700 text-white shadow-sm hover:bg-red-800 hover:shadow active:bg-red-900"
       )}
     >
       {children}
@@ -39,10 +39,10 @@ export function SubmitButton({
     <button
       {...props}
       className={clsx(
-        "inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-semibold transition disabled:opacity-60",
-        tone === "primary" && "bg-ink text-white hover:bg-black",
-        tone === "secondary" && "border border-ink/15 bg-white text-ink hover:border-ink/30",
-        tone === "danger" && "bg-red-700 text-white hover:bg-red-800",
+        "inline-flex h-10 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-moss",
+        tone === "primary" && "bg-ink text-white shadow-sm hover:bg-black hover:shadow active:bg-ink/90",
+        tone === "secondary" && "border border-ink/15 bg-white text-ink shadow-sm hover:border-ink/30 hover:bg-paper active:bg-ink/5",
+        tone === "danger" && "bg-red-700 text-white shadow-sm hover:bg-red-800 hover:shadow active:bg-red-900",
         props.className
       )}
     >
@@ -74,6 +74,12 @@ export const inputClass =
 
 export const textareaClass =
   "min-h-32 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none transition focus:border-moss focus:ring-2 focus:ring-moss/20";
+
+export const compactTextareaClass =
+  "min-h-20 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none transition focus:border-moss focus:ring-2 focus:ring-moss/20";
+
+export const markdownTextareaClass =
+  "min-h-80 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm outline-none transition focus:border-moss focus:ring-2 focus:ring-moss/20";
 
 export function EmptyState({
   title,

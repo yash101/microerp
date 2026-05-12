@@ -3,6 +3,7 @@ import Link from "next/link";
 import { loginAction } from "@/lib/actions";
 import { hasSession } from "@/lib/auth";
 import { Field, inputClass, SubmitButton } from "@/components/ui";
+import Image from "next/image";
 
 export default async function LoginPage({
   searchParams
@@ -16,7 +17,12 @@ export default async function LoginPage({
   const params = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-10">
+    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+      <section className="w-full max-w-sm rounded-lg">
+        <div className="">
+          <Image src={"/images/jankdrive.png"} alt={"jankdrive"} width={400} height={400} />
+        </div>
+      </section>
       <section className="w-full max-w-sm rounded-lg border border-ink/10 bg-white p-6 shadow-sm">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-moss">jankdrive</p>

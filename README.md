@@ -1,6 +1,6 @@
 # Micro ERP
 
-![jank](docs/jankdrive.png)
+![jank](public/images/jankdrive.png)
 
 ## (non)Enterprise Resource Planning
 

@@ -30,6 +30,27 @@ export const componentSchema = z.object({
   descriptionMarkdown: markdown
 });
 
+export const customerSchema = z.object({
+  name: requiredText,
+  descriptionMarkdown: markdown
+});
+
+export const conversationMessageSchema = z.object({
+  title: requiredText,
+  shortDescription: z.string().trim().max(500, "Short description is too long").default(""),
+  bodyMarkdown: markdown,
+  participantNames: z.array(requiredText.max(120)).default([]),
+  attachmentLinks: z
+    .array(
+      z.object({
+        label: requiredText.max(200),
+        url: z.string().trim().url("Attachment link must be a valid URL").max(2000)
+      })
+    )
+    .default([]),
+  keepAttachmentIds: z.array(z.string().uuid()).default([])
+});
+
 export const expenseSchema = z.object({
   vendor: requiredText,
   recipient: requiredText,
@@ -91,5 +112,46 @@ export function parseExpenseForm(formData: FormData) {
     spentAt: formString(formData, "spentAt"),
     status: formString(formData, "status") || "draft",
     notes: formString(formData, "notes")
+  });
+}
+
+export function parseConversationParticipantNames(value: string) {
+  const seen = new Set<string>();
+  const names: string[] = [];
+
+  for (const name of value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean)) {
+    const normalized = name.toLocaleLowerCase();
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      names.push(name);
+    }
+  }
+
+  return names;
+}
+
+export function parseConversationAttachmentLinks(labelsValue: string, urlsValue: string) {
+  const labels = labelsValue.split("\n");
+  const urls = urlsValue.split("\n");
+
+  return urls
+    .map((url, index) => ({
+      url: url.trim(),
+      label: (labels[index] ?? "").trim() || url.trim()
+    }))
+    .filter((link) => link.url);
+}
+
+export function parseConversationMessageForm(formData: FormData) {
+  return conversationMessageSchema.parse({
+    title: formString(formData, "title"),
+    shortDescription: formString(formData, "shortDescription"),
+    bodyMarkdown: formString(formData, "bodyMarkdown"),
+    participantNames: parseConversationParticipantNames(formString(formData, "participantNames")),
+    attachmentLinks: parseConversationAttachmentLinks(
+      formString(formData, "attachmentLinkLabels"),
+      formString(formData, "attachmentLinkUrls")
+    ),
+    keepAttachmentIds: formData.getAll("keepAttachmentIds").filter((value): value is string => typeof value === "string")
   });
 }

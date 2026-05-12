@@ -5,7 +5,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
+  conversationAttachments,
+  conversationMessagePeople,
+  conversationMessages,
+  conversationPeople,
   components,
+  customers,
   expenseArtifacts,
   expenses,
   expenseStatusEnum,
@@ -27,7 +32,9 @@ import {
 import {
   authSchema,
   componentSchema,
+  customerSchema,
   formString,
+  parseConversationMessageForm,
   parseExpenseForm,
   parseTaskForm,
   projectSchema
@@ -116,6 +123,106 @@ function expenseFiles(formData: FormData) {
     .filter((value): value is File => value instanceof File && value.size > 0);
 }
 
+function conversationFiles(formData: FormData) {
+  return formData
+    .getAll("attachments")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+}
+
+function normalizedPersonName(name: string) {
+  return name.trim().toLocaleLowerCase();
+}
+
+async function assertCustomerForUser(userId: string, customerId: string) {
+  const [customer] = await db
+    .select({ id: customers.id })
+    .from(customers)
+    .where(and(eq(customers.userId, userId), eq(customers.id, customerId)))
+    .limit(1);
+
+  if (!customer) {
+    throw new Error("Customer not found.");
+  }
+}
+
+async function getConversationMessageForUser(userId: string, customerId: string, messageId: string) {
+  const [message] = await db
+    .select({ id: conversationMessages.id })
+    .from(conversationMessages)
+    .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .where(
+      and(
+        eq(customers.userId, userId),
+        eq(conversationMessages.customerId, customerId),
+        eq(conversationMessages.id, messageId)
+      )
+    )
+    .limit(1);
+
+  if (!message) {
+    throw new Error("Conversation message not found.");
+  }
+
+  return message;
+}
+
+async function personIdsForNames(userId: string, names: string[]) {
+  if (names.length === 0) return [];
+
+  const peopleInput = names.map((name) => ({
+    userId,
+    name,
+    normalizedName: normalizedPersonName(name)
+  }));
+  const normalizedNames = peopleInput.map((person) => person.normalizedName);
+
+  await db
+    .insert(conversationPeople)
+    .values(peopleInput)
+    .onConflictDoNothing({
+      target: [conversationPeople.userId, conversationPeople.normalizedName]
+    });
+
+  const rows = await db
+    .select({ id: conversationPeople.id })
+    .from(conversationPeople)
+    .where(and(eq(conversationPeople.userId, userId), inArray(conversationPeople.normalizedName, normalizedNames)));
+
+  return rows.map((row) => row.id);
+}
+
+async function insertConversationAttachments(messageId: string, formData: FormData) {
+  const files = conversationFiles(formData);
+  const input = parseConversationMessageForm(formData);
+
+  if (files.some((file) => file.size > maxArtifactBytes)) {
+    throw new Error("Attachment files must be 5 MB or smaller.");
+  }
+
+  const uploadAttachments = await Promise.all(
+    files.map(async (file) => ({
+      messageId,
+      kind: "upload" as const,
+      label: file.name || "attachment",
+      fileName: file.name || "attachment",
+      contentType: file.type || "application/octet-stream",
+      byteSize: file.size,
+      dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+    }))
+  );
+  const linkAttachments = input.attachmentLinks.map((link) => ({
+    messageId,
+    kind: "link" as const,
+    label: link.label,
+    url: link.url
+  }));
+  const attachments = [...uploadAttachments, ...linkAttachments];
+
+  if (attachments.length > 0) {
+    await db.insert(conversationAttachments).values(attachments);
+  }
+}
+
 export async function loginAction(formData: FormData) {
   const input = authSchema.pick({ username: true, password: true }).parse({
     username: formString(formData, "username"),
@@ -189,6 +296,127 @@ export async function deleteProjectAction(projectId: string) {
   await db.delete(projects).where(and(eq(projects.userId, user.id), eq(projects.id, projectId)));
   revalidatePath("/");
   redirect("/");
+}
+
+export async function createCustomerAction(formData: FormData) {
+  const user = await requireSession();
+  const input = customerSchema.parse({
+    name: formString(formData, "name"),
+    descriptionMarkdown: formString(formData, "descriptionMarkdown")
+  });
+  const [customer] = await db
+    .insert(customers)
+    .values({ ...input, userId: user.id })
+    .returning({ id: customers.id });
+
+  revalidatePath("/conversations");
+  redirect(`/conversations/customers/${customer.id}`);
+}
+
+export async function updateCustomerAction(customerId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertCustomerForUser(user.id, customerId);
+  const input = customerSchema.parse({
+    name: formString(formData, "name"),
+    descriptionMarkdown: formString(formData, "descriptionMarkdown")
+  });
+
+  await db
+    .update(customers)
+    .set({ ...input, updatedAt: new Date() })
+    .where(and(eq(customers.userId, user.id), eq(customers.id, customerId)));
+
+  revalidatePath("/conversations");
+  revalidatePath(`/conversations/customers/${customerId}`);
+  redirect(`/conversations/customers/${customerId}`);
+}
+
+export async function deleteCustomerAction(customerId: string) {
+  const user = await requireSession();
+  await assertCustomerForUser(user.id, customerId);
+  await db.delete(customers).where(and(eq(customers.userId, user.id), eq(customers.id, customerId)));
+  revalidatePath("/conversations");
+  redirect("/conversations");
+}
+
+export async function createConversationMessageAction(customerId: string, formData: FormData) {
+  const user = await requireSession();
+  await assertCustomerForUser(user.id, customerId);
+  const input = parseConversationMessageForm(formData);
+  const [message] = await db
+    .insert(conversationMessages)
+    .values({
+      customerId,
+      title: input.title,
+      shortDescription: input.shortDescription,
+      bodyMarkdown: input.bodyMarkdown
+    })
+    .returning({ id: conversationMessages.id });
+
+  const personIds = await personIdsForNames(user.id, input.participantNames);
+  if (personIds.length > 0) {
+    await db
+      .insert(conversationMessagePeople)
+      .values(personIds.map((personId) => ({ messageId: message.id, personId })));
+  }
+
+  await insertConversationAttachments(message.id, formData);
+
+  revalidatePath("/conversations");
+  revalidatePath(`/conversations/customers/${customerId}`);
+  redirect(`/conversations/customers/${customerId}`);
+}
+
+export async function updateConversationMessageAction(customerId: string, messageId: string, formData: FormData) {
+  const user = await requireSession();
+  await getConversationMessageForUser(user.id, customerId, messageId);
+  const input = parseConversationMessageForm(formData);
+
+  await db
+    .update(conversationMessages)
+    .set({
+      title: input.title,
+      shortDescription: input.shortDescription,
+      bodyMarkdown: input.bodyMarkdown,
+      updatedAt: new Date()
+    })
+    .where(and(eq(conversationMessages.customerId, customerId), eq(conversationMessages.id, messageId)));
+
+  await db.delete(conversationMessagePeople).where(eq(conversationMessagePeople.messageId, messageId));
+  const personIds = await personIdsForNames(user.id, input.participantNames);
+  if (personIds.length > 0) {
+    await db
+      .insert(conversationMessagePeople)
+      .values(personIds.map((personId) => ({ messageId, personId })));
+  }
+
+  const existingAttachments = await db
+    .select({ id: conversationAttachments.id })
+    .from(conversationAttachments)
+    .where(eq(conversationAttachments.messageId, messageId));
+  const attachmentIdsToDelete = existingAttachments
+    .map((attachment) => attachment.id)
+    .filter((attachmentId) => !input.keepAttachmentIds.includes(attachmentId));
+  if (attachmentIdsToDelete.length > 0) {
+    await db.delete(conversationAttachments).where(inArray(conversationAttachments.id, attachmentIdsToDelete));
+  }
+  await insertConversationAttachments(messageId, formData);
+
+  revalidatePath("/conversations");
+  revalidatePath(`/conversations/customers/${customerId}`);
+  redirect(`/conversations/customers/${customerId}`);
+}
+
+export async function deleteConversationMessageAction(customerId: string, messageId: string) {
+  const user = await requireSession();
+  await getConversationMessageForUser(user.id, customerId, messageId);
+  await db
+    .delete(conversationMessages)
+    .where(and(eq(conversationMessages.customerId, customerId), eq(conversationMessages.id, messageId)));
+
+  revalidatePath("/conversations");
+  revalidatePath(`/conversations/customers/${customerId}`);
+  redirect(`/conversations/customers/${customerId}`);
 }
 
 export async function createComponentAction(projectId: string, formData: FormData) {

@@ -1,15 +1,38 @@
-import type { Component, Expense, ExpenseArtifact, ExpenseStatus, Project, Task, TaskStatus } from "@/db/schema";
+import type {
+  Component,
+  ConversationAttachment,
+  ConversationMessage,
+  ConversationPerson,
+  Customer,
+  Expense,
+  ExpenseArtifact,
+  ExpenseStatus,
+  Project,
+  Task,
+  TaskStatus
+} from "@/db/schema";
 import {
   createComponentAction,
+  createConversationMessageAction,
+  createCustomerAction,
   createExpenseAction,
   createProjectAction,
   createTaskAction,
+  updateConversationMessageAction,
+  updateCustomerAction,
   updateExpenseAction,
   updateComponentAction,
   updateProjectAction,
   updateTaskAction
 } from "@/lib/actions";
-import { Field, inputClass, SubmitButton, textareaClass } from "@/components/ui";
+import {
+  compactTextareaClass,
+  Field,
+  inputClass,
+  markdownTextareaClass,
+  SubmitButton,
+  textareaClass
+} from "@/components/ui";
 
 const statuses: TaskStatus[] = ["candidate", "included", "complete", "cut", "later"];
 const expenseStatuses: ExpenseStatus[] = ["draft", "submitted", "approved", "reimbursed", "rejected"];
@@ -27,6 +50,12 @@ function dateValue(value: Date | null) {
   const offset = value.getTimezoneOffset();
   const local = new Date(value.getTime() - offset * 60 * 1000);
   return local.toISOString().slice(0, 10);
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function ProjectForm({ project }: { project?: Project }) {
@@ -67,6 +96,116 @@ export function ComponentForm({
         />
       </Field>
       <SubmitButton>{component ? "Save component" : "Add component"}</SubmitButton>
+    </form>
+  );
+}
+
+export function CustomerForm({ customer }: { customer?: Customer }) {
+  const action = customer ? updateCustomerAction.bind(null, customer.id) : createCustomerAction;
+  return (
+    <form action={action} className="grid gap-4">
+      <Field label="Name">
+        <input className={inputClass} name="name" required defaultValue={customer?.name} />
+      </Field>
+      <Field label="Description markdown">
+        <textarea
+          className={compactTextareaClass}
+          name="descriptionMarkdown"
+          defaultValue={customer?.descriptionMarkdown}
+        />
+      </Field>
+      <SubmitButton>{customer ? "Save customer" : "Create customer"}</SubmitButton>
+    </form>
+  );
+}
+
+export function ConversationMessageForm({
+  customerId,
+  message
+}: {
+  customerId: string;
+  message?: ConversationMessage & {
+    people?: Pick<ConversationPerson, "id" | "name">[];
+    attachments?: Pick<
+      ConversationAttachment,
+      "id" | "kind" | "label" | "url" | "fileName" | "byteSize" | "contentType"
+    >[];
+  };
+}) {
+  const action = message
+    ? updateConversationMessageAction.bind(null, customerId, message.id)
+    : createConversationMessageAction.bind(null, customerId);
+  const linkAttachments = message?.attachments?.filter((attachment) => attachment.kind === "link") ?? [];
+
+  return (
+    <form action={action} className="grid gap-5">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Field label="Title">
+          <input className={inputClass} name="title" required defaultValue={message?.title} />
+        </Field>
+        <Field label="Who was present" hint="Separate names with commas or new lines. Existing names are reused.">
+          <input
+            className={inputClass}
+            name="participantNames"
+            defaultValue={message?.people?.map((person) => person.name).join(", ")}
+            placeholder="Alex Carter, Priya Shah"
+          />
+        </Field>
+      </div>
+
+      <Field label="Short description">
+        <textarea
+          className={compactTextareaClass}
+          name="shortDescription"
+          maxLength={500}
+          defaultValue={message?.shortDescription}
+        />
+      </Field>
+
+      <Field label="Markdown body">
+        <textarea className={markdownTextareaClass} name="bodyMarkdown" defaultValue={message?.bodyMarkdown} />
+      </Field>
+
+      {message?.attachments?.length ? (
+        <fieldset className="rounded-lg border border-ink/15 bg-white p-4">
+          <legend className="px-1 text-sm font-semibold">Existing attachments</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {message.attachments.map((attachment) => (
+              <label key={attachment.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="keepAttachmentIds" value={attachment.id} defaultChecked />
+                <span>
+                  Keep {attachment.label}
+                  {attachment.kind === "upload" && attachment.byteSize ? ` (${formatBytes(attachment.byteSize)})` : ""}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Field label="Upload attachments" hint="Attach PDF, image, or document files up to 5 MB each.">
+          <input className={inputClass} name="attachments" type="file" multiple />
+        </Field>
+        <div className="grid gap-4">
+          <Field label="External attachment labels" hint="One label per line, matching the URL lines.">
+            <textarea
+              className={compactTextareaClass}
+              name="attachmentLinkLabels"
+              defaultValue={linkAttachments.map((attachment) => attachment.label).join("\n")}
+            />
+          </Field>
+          <Field label="External attachment URLs" hint="One URL per line.">
+            <textarea
+              className={compactTextareaClass}
+              name="attachmentLinkUrls"
+              defaultValue={linkAttachments.map((attachment) => attachment.url ?? "").join("\n")}
+            />
+          </Field>
+        </div>
+      </div>
+
+      <SubmitButton>{message ? "Save message" : "Add message"}</SubmitButton>
     </form>
   );
 }

@@ -31,30 +31,8 @@ select {
   color: #1f2933;
 }
 
-.markdown {
-  line-height: 1.65;
-}
-
-.markdown h1,
-.markdown h2,
-.markdown h3 {
-  margin-top: 1rem;
-  font-weight: 700;
-}
-
-.markdown p,
-.markdown ul,
-.markdown ol {
-  margin-top: 0.75rem;
-}
-
-.markdown ul,
-.markdown ol {
-  padding-left: 1.25rem;
-}
-
-.markdown code {
-  border-radius: 0.25rem;
-  background: rgba(31, 41, 51, 0.08);
-  padding: 0.1rem 0.25rem;
+@layer components {
+  .markdown {
+    @apply prose prose-sm max-w-none text-ink prose-headings:text-ink prose-a:text-moss prose-a:font-semibold prose-code:rounded prose-code:bg-ink/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-ink prose-pre:bg-ink prose-img:rounded-md prose-img:border prose-img:border-ink/10;
+  }
 }

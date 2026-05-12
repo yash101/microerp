@@ -7,12 +7,14 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 export const taskStatusEnum = pgEnum("task_status", ["candidate", "included", "complete", "cut", "later"]);
 export const expenseStatusEnum = pgEnum("expense_status", ["draft", "submitted", "approved", "reimbursed", "rejected"]);
+export const conversationAttachmentKindEnum = pgEnum("conversation_attachment_kind", ["upload", "link"]);
 
 export const users = pgTable(
   "users",
@@ -145,6 +147,104 @@ export const expenseArtifacts = pgTable(
   })
 );
 
+export const customers = pgTable(
+  "customers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    descriptionMarkdown: text("description_markdown").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index("customers_user_id_idx").on(table.userId),
+    nameIdx: index("customers_name_idx").on(table.name)
+  })
+);
+
+export const conversationPeople = pgTable(
+  "conversation_people",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index("conversation_people_user_id_idx").on(table.userId),
+    nameIdx: index("conversation_people_name_idx").on(table.name),
+    normalizedNameUnique: uniqueIndex("conversation_people_user_normalized_name_idx").on(
+      table.userId,
+      table.normalizedName
+    )
+  })
+);
+
+export const conversationMessages = pgTable(
+  "conversation_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    shortDescription: text("short_description").notNull().default(""),
+    bodyMarkdown: text("body_markdown").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    customerIdIdx: index("conversation_messages_customer_id_idx").on(table.customerId),
+    createdAtIdx: index("conversation_messages_created_at_idx").on(table.createdAt),
+    updatedAtIdx: index("conversation_messages_updated_at_idx").on(table.updatedAt)
+  })
+);
+
+export const conversationMessagePeople = pgTable(
+  "conversation_message_people",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => conversationMessages.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => conversationPeople.id, { onDelete: "cascade" })
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.messageId, table.personId] }),
+    personIdIdx: index("conversation_message_people_person_id_idx").on(table.personId)
+  })
+);
+
+export const conversationAttachments = pgTable(
+  "conversation_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => conversationMessages.id, { onDelete: "cascade" }),
+    kind: conversationAttachmentKindEnum("kind").notNull(),
+    label: text("label").notNull(),
+    url: text("url"),
+    fileName: text("file_name"),
+    contentType: text("content_type"),
+    byteSize: integer("byte_size"),
+    dataBase64: text("data_base64"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    messageIdIdx: index("conversation_attachments_message_id_idx").on(table.messageId),
+    kindIdx: index("conversation_attachments_kind_idx").on(table.kind)
+  })
+);
+
 export const projectRelations = relations(projects, ({ many }) => ({
   components: many(components),
   tasks: many(tasks),
@@ -153,7 +253,9 @@ export const projectRelations = relations(projects, ({ many }) => ({
 
 export const userRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
-  projects: many(projects)
+  projects: many(projects),
+  customers: many(customers),
+  conversationPeople: many(conversationPeople)
 }));
 
 export const sessionRelations = relations(sessions, ({ one }) => ({
@@ -205,12 +307,60 @@ export const expenseArtifactRelations = relations(expenseArtifacts, ({ one }) =>
   })
 }));
 
+export const customerRelations = relations(customers, ({ one, many }) => ({
+  user: one(users, {
+    fields: [customers.userId],
+    references: [users.id]
+  }),
+  messages: many(conversationMessages)
+}));
+
+export const conversationPersonRelations = relations(conversationPeople, ({ one, many }) => ({
+  user: one(users, {
+    fields: [conversationPeople.userId],
+    references: [users.id]
+  }),
+  messagePeople: many(conversationMessagePeople)
+}));
+
+export const conversationMessageRelations = relations(conversationMessages, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [conversationMessages.customerId],
+    references: [customers.id]
+  }),
+  messagePeople: many(conversationMessagePeople),
+  attachments: many(conversationAttachments)
+}));
+
+export const conversationMessagePersonRelations = relations(conversationMessagePeople, ({ one }) => ({
+  message: one(conversationMessages, {
+    fields: [conversationMessagePeople.messageId],
+    references: [conversationMessages.id]
+  }),
+  person: one(conversationPeople, {
+    fields: [conversationMessagePeople.personId],
+    references: [conversationPeople.id]
+  })
+}));
+
+export const conversationAttachmentRelations = relations(conversationAttachments, ({ one }) => ({
+  message: one(conversationMessages, {
+    fields: [conversationAttachments.messageId],
+    references: [conversationMessages.id]
+  })
+}));
+
 export type Project = typeof projects.$inferSelect;
 export type Component = typeof components.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type ExpenseArtifact = typeof expenseArtifacts.$inferSelect;
+export type Customer = typeof customers.$inferSelect;
+export type ConversationPerson = typeof conversationPeople.$inferSelect;
+export type ConversationMessage = typeof conversationMessages.$inferSelect;
+export type ConversationAttachment = typeof conversationAttachments.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];
 export type ExpenseStatus = (typeof expenseStatusEnum.enumValues)[number];
+export type ConversationAttachmentKind = (typeof conversationAttachmentKindEnum.enumValues)[number];

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { expenseSchema, taskSchema } from "@/lib/validation";
+import {
+  conversationMessageSchema,
+  customerSchema,
+  expenseSchema,
+  parseConversationParticipantNames,
+  taskSchema
+} from "@/lib/validation";
 
 const validTask = {
   name: "Ship dashboard",
@@ -55,5 +61,52 @@ describe("expenseSchema", () => {
   it("requires a recipient", () => {
     expect(expenseSchema.parse(validExpense).recipient).toBe("Jamie Lee");
     expect(() => expenseSchema.parse({ ...validExpense, recipient: "" })).toThrow();
+  });
+});
+
+describe("customerSchema", () => {
+  it("requires a customer name", () => {
+    expect(customerSchema.parse({ name: "Acme Co", descriptionMarkdown: "" }).name).toBe("Acme Co");
+    expect(() => customerSchema.parse({ name: "", descriptionMarkdown: "" })).toThrow();
+  });
+});
+
+describe("conversationMessageSchema", () => {
+  const validMessage = {
+    title: "Intro call",
+    shortDescription: "Talked through onboarding.",
+    bodyMarkdown: "## Notes",
+    participantNames: ["Alex Carter"],
+    attachmentLinks: [{ label: "Proposal", url: "https://example.com/proposal.pdf" }],
+    keepAttachmentIds: []
+  };
+
+  it("accepts a valid conversation message", () => {
+    expect(conversationMessageSchema.parse(validMessage).title).toBe("Intro call");
+  });
+
+  it("rejects invalid attachment URLs", () => {
+    expect(() =>
+      conversationMessageSchema.parse({
+        ...validMessage,
+        attachmentLinks: [{ label: "Broken", url: "not a url" }]
+      })
+    ).toThrow();
+  });
+
+  it("limits plaintext short descriptions", () => {
+    expect(() =>
+      conversationMessageSchema.parse({
+        ...validMessage,
+        shortDescription: "x".repeat(501)
+      })
+    ).toThrow();
+  });
+
+  it("trims and de-duplicates participant names", () => {
+    expect(parseConversationParticipantNames(" Alex Carter, Priya Shah\nalex carter ")).toEqual([
+      "Alex Carter",
+      "Priya Shah"
+    ]);
   });
 });
