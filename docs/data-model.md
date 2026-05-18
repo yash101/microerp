@@ -141,9 +141,21 @@
 - Migration `0006_project_scoped_conversations` renames the old user-scoped conversation tables to `orphaned_customers`, `orphaned_conversation_people`, `orphaned_conversation_messages`, `orphaned_conversation_message_people`, and `orphaned_conversation_attachments`.
 - The new live conversation tables reuse the original table names and start empty.
 
+## Backup And Restore
+
+- Backup/export does not add tables. It serializes the live project graph into a tar.gz archive.
+- Single-project export creates:
+  - `{project-name}/project.json`
+  - `{project-name}/attachments/...` for uploaded attachment bytes
+- All-project export creates one folder per project, using `{project-name}-{project-id-prefix}` to avoid folder collisions.
+- `project.json` contains old IDs only as import mapping keys. Restore inserts new rows and remaps relationships.
+- Restore creates new projects owned by the current user. It does not overwrite, merge, delete, or resurrect existing rows.
+- Upload attachments are restored into fresh append-only `attachments` rows. Link attachments are restored as link metadata.
+
 ## Last Updated
 
 - 2026-05-18: Created agent-facing data model notes from current Drizzle schema and server actions.
 - 2026-05-18: Documented project-scoped conversations and orphaned legacy conversation tables.
 - 2026-05-18: Added shared append-only `attachments` table and link-only expense/conversation attachment tables.
 - 2026-05-18: Added expense business-use percentage, sales tax paid, and tax treatment metadata.
+- 2026-05-18: Documented tar.gz backup/export format and restore-as-new-project behavior.

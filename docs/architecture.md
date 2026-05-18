@@ -47,6 +47,10 @@
 - `/projects/[projectId]/expenses`: list and create basic expenses.
 - `/projects/[projectId]/expenses/[expenseId]/edit`: edit draft expenses.
 - `/projects/[projectId]/expenses/artifacts/[artifactId]`: download receipt artifacts.
+- `/backup`: export all projects, export one project, or restore a tar.gz backup into new projects.
+- `/backup/export`: download a tar.gz backup for every project owned by the current user.
+- `/backup/import`: POST endpoint that restores uploaded tar.gz backups as new projects.
+- `/projects/[projectId]/export`: download a tar.gz backup for one project.
 - `/conversations`: compatibility redirect to the first project's conversations.
 - `/projects/[projectId]/conversations`: project customer conversation timeline and customer list.
 - `/projects/[projectId]/conversations/customers/new`: create a project customer record.
@@ -79,6 +83,8 @@
 - Expense expensing totals are `amount * businessUsePercentage / 100`.
 - Tax treatment fields are stored as notes/metadata only; the app does not calculate taxes, depreciation, deductions, or filing positions.
 - The old user-scoped conversation tables are intentionally orphaned as `orphaned_*` tables by migration `0006_project_scoped_conversations`.
+- Backups are tar.gz archives. Each project folder contains `project.json` plus upload payloads under `attachments/`.
+- Restores create fresh projects with new row IDs and remapped relationships. Existing projects are not overwritten or deleted.
 
 ## Non-Goals
 
@@ -97,3 +103,4 @@
 - 2026-05-18: Updated conversations to be project-scoped and documented orphaned legacy tables.
 - 2026-05-18: Added shared append-only attachment storage for expense and conversation attachments.
 - 2026-05-18: Added basic expense tax metadata and business-use expensing totals.
+- 2026-05-18: Added tar.gz project backup/export and restore-as-new-project import.

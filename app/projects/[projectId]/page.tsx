@@ -126,11 +126,7 @@ export default async function ProjectPage({
 
         <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-moss">Planning dashboard</p>
-              <h1 className="mt-1 text-3xl font-bold">{project.name}</h1>
-              {project.description ? <p className="mt-2 max-w-3xl text-sm text-ink/65">{project.description}</p> : null}
-            </div>
+
             <div className="flex flex-wrap gap-2">
               <ButtonLink href={`/projects/${project.id}/tasks/new`}>New task</ButtonLink>
               <ButtonLink href={`/projects/${project.id}/expenses`} tone="secondary">
@@ -142,12 +138,20 @@ export default async function ProjectPage({
               <ButtonLink href={`/projects/${project.id}/components`} tone="secondary">
                 Components
               </ButtonLink>
+              <ButtonLink href="/backup" tone="secondary">
+                Backup
+              </ButtonLink>
               <ButtonLink href={`/projects/${project.id}/edit`} tone="secondary">
                 Edit
               </ButtonLink>
               <a className="inline-flex h-10 items-center px-2 text-sm font-medium text-ink/60 hover:text-ink" href="/logout">
                 Logout
               </a>
+            </div>
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.14em] text-moss">Planning dashboard</p>
+              <h1 className="mt-1 text-3xl font-bold">{project.name}</h1>
+              {project.description ? <p className="mt-2 max-w-3xl text-sm text-ink/65">{project.description}</p> : null}
             </div>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

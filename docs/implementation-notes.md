@@ -12,6 +12,7 @@
 - Expense tax fields are metadata only. Do not add deduction/depreciation/tax filing calculations.
 - Conversation tracking is project-scoped memory aid, not a CRM.
 - Attachments use a shared append-only table. Do not update or delete `attachments` rows from app code; remove rows from association tables instead.
+- Import/export is backup/restore, not sync. Restore should create new projects and remap IDs.
 
 ## Sharp Edges
 
@@ -19,6 +20,8 @@
 - Expense and conversation upload action code allows files up to 5 MB, but `next.config.mjs` sets the server action body limit to 2 MB.
 - File uploads are stored as base64 in Postgres. This is simple but not space-efficient.
 - The `attachments` table is append-only by convention, not by trigger or permissions.
+- Backup archives duplicate upload bytes from the database into tar entries, so large attachments can make large downloads/uploads.
+- Import expects gzip-compressed tar archives with one or more `project.json` files. It is intentionally not a general importer.
 - `wrangler.jsonc` includes an uncommented instructional line before the `hyperdrive` key; verify the file before relying on Wrangler parsing.
 - Password reset does not exist. Losing credentials means losing access unless someone manually edits data.
 - Sessions expire after 14 days and are not refreshed on read.
@@ -49,6 +52,7 @@
 - Project/task/component flows: `lib/actions.ts`, `lib/data.ts`, `app/projects/**`, `components/forms.tsx`.
 - Expenses: `app/projects/[projectId]/expenses/**`, `lib/actions.ts`, `lib/data.ts`.
 - Conversations: `app/projects/[projectId]/conversations/**`, `components/conversations.tsx`, `lib/actions.ts`, `lib/data.ts`.
+- Backup/restore: `lib/backup.ts`, `lib/tar.ts`, `app/backup/**`, `app/projects/[projectId]/export/route.ts`.
 - Shared styling/components: `app/globals.css`, `components/ui.tsx`.
 - Deployment: `README.md`, `docs/deploy-kubernetes.md`, `deploy/prod.yaml`, `wrangler.jsonc`.
 
@@ -66,3 +70,4 @@
 - 2026-05-18: Documented project-scoped conversation routing and the orphaned-table migration.
 - 2026-05-18: Documented shared append-only attachment storage and association-only deletes.
 - 2026-05-18: Documented expense tax metadata as storage-only, with business-use expensing display totals.
+- 2026-05-18: Documented tar.gz backup/export and restore-as-new-project import.
