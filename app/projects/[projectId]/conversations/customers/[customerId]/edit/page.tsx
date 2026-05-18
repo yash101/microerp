@@ -1,19 +1,22 @@
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
-import { getCustomerWithConversations } from "@/lib/data";
+import { getCustomerWithConversations, getProject } from "@/lib/data";
 import { CustomerForm } from "@/components/forms";
 import { ButtonLink, PageShell } from "@/components/ui";
 
 export default async function EditCustomerPage({
   params
 }: {
-  params: Promise<{ customerId: string }>;
+  params: Promise<{ projectId: string; customerId: string }>;
 }) {
   const user = await requireSession();
-  const { customerId } = await params;
-  const customer = await getCustomerWithConversations(user.id, customerId);
+  const { projectId, customerId } = await params;
+  const [project, customer] = await Promise.all([
+    getProject(user.id, projectId),
+    getCustomerWithConversations(user.id, projectId, customerId)
+  ]);
 
-  if (!customer) notFound();
+  if (!project || !customer) notFound();
 
   return (
     <PageShell>
@@ -21,13 +24,14 @@ export default async function EditCustomerPage({
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-moss">Customer</p>
           <h1 className="mt-1 text-3xl font-bold">Edit {customer.name}</h1>
+          <p className="mt-2 text-sm text-ink/60">{project.name}</p>
         </div>
-        <ButtonLink href={`/conversations/customers/${customer.id}`} tone="secondary">
+        <ButtonLink href={`/projects/${project.id}/conversations/customers/${customer.id}`} tone="secondary">
           Back
         </ButtonLink>
       </div>
       <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
-        <CustomerForm customer={customer} />
+        <CustomerForm projectId={project.id} customer={customer} />
       </section>
     </PageShell>
   );

@@ -23,12 +23,12 @@ export async function GET(
   {
     params
   }: {
-    params: Promise<{ attachmentId: string }>;
+    params: Promise<{ projectId: string; attachmentId: string }>;
   }
 ) {
   const user = await requireSession();
-  const { attachmentId } = await params;
-  const attachment = await getConversationAttachment(user.id, attachmentId);
+  const { projectId, attachmentId } = await params;
+  const attachment = await getConversationAttachment(user.id, projectId, attachmentId);
 
   if (!attachment) notFound();
 

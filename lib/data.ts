@@ -203,19 +203,20 @@ function timestampMs(value: Date | string) {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-export async function listConversationCustomers(userId: string, query = "") {
+export async function listConversationCustomers(userId: string, projectId: string, query = "") {
   const pattern = searchPattern(query);
   const where = pattern
     ? and(
-        eq(customers.userId, userId),
+        eq(projects.userId, userId),
+        eq(customers.projectId, projectId),
         or(ilike(customers.name, pattern), ilike(customers.descriptionMarkdown, pattern))
       )
-    : eq(customers.userId, userId);
+    : and(eq(projects.userId, userId), eq(customers.projectId, projectId));
 
   const rows = await db
     .select({
       id: customers.id,
-      userId: customers.userId,
+      projectId: customers.projectId,
       name: customers.name,
       descriptionMarkdown: customers.descriptionMarkdown,
       createdAt: customers.createdAt,
@@ -223,11 +224,12 @@ export async function listConversationCustomers(userId: string, query = "") {
       firstContactAt: sql<Date | null>`min(${conversationMessages.createdAt})`
     })
     .from(customers)
+    .innerJoin(projects, eq(customers.projectId, projects.id))
     .leftJoin(conversationMessages, eq(conversationMessages.customerId, customers.id))
     .where(where)
     .groupBy(
       customers.id,
-      customers.userId,
+      customers.projectId,
       customers.name,
       customers.descriptionMarkdown,
       customers.createdAt,
@@ -287,11 +289,12 @@ async function hydrateConversationMessages<
   }));
 }
 
-export async function listConversationTimeline(userId: string, query = "") {
+export async function listConversationTimeline(userId: string, projectId: string, query = "") {
   const pattern = searchPattern(query);
   const where = pattern
     ? and(
-        eq(customers.userId, userId),
+        eq(projects.userId, userId),
+        eq(customers.projectId, projectId),
         or(
           ilike(customers.name, pattern),
           ilike(conversationMessages.title, pattern),
@@ -299,7 +302,7 @@ export async function listConversationTimeline(userId: string, query = "") {
           ilike(conversationMessages.bodyMarkdown, pattern)
         )
       )
-    : eq(customers.userId, userId);
+    : and(eq(projects.userId, userId), eq(customers.projectId, projectId));
 
   const rows = await db
     .select({
@@ -317,6 +320,7 @@ export async function listConversationTimeline(userId: string, query = "") {
     })
     .from(conversationMessages)
     .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
     .where(where)
     .orderBy(desc(conversationMessages.createdAt))
     .limit(50);
@@ -324,11 +328,12 @@ export async function listConversationTimeline(userId: string, query = "") {
   return (await hydrateConversationMessages(rows)).sort((left, right) => timestampMs(left.createdAt) - timestampMs(right.createdAt));
 }
 
-export async function getCustomerWithConversations(userId: string, customerId: string) {
+export async function getCustomerWithConversations(userId: string, projectId: string, customerId: string) {
   const [customer] = await db
     .select()
     .from(customers)
-    .where(and(eq(customers.userId, userId), eq(customers.id, customerId)))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(customers.projectId, projectId), eq(customers.id, customerId)))
     .limit(1);
 
   if (!customer) return null;
@@ -349,19 +354,20 @@ export async function getCustomerWithConversations(userId: string, customerId: s
     })
     .from(conversationMessages)
     .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
-    .where(and(eq(customers.userId, userId), eq(conversationMessages.customerId, customerId)))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(customers.projectId, projectId), eq(conversationMessages.customerId, customerId)))
     .orderBy(asc(conversationMessages.createdAt));
 
   const messages = await hydrateConversationMessages(rows);
 
   return {
-    ...customer,
+    ...customer.customers,
     firstContactAt: messages[0]?.createdAt ?? null,
     messages
   };
 }
 
-export async function getConversationMessage(userId: string, customerId: string, messageId: string) {
+export async function getConversationMessage(userId: string, projectId: string, customerId: string, messageId: string) {
   const [message] = await db
     .select({
       id: conversationMessages.id,
@@ -378,9 +384,11 @@ export async function getConversationMessage(userId: string, customerId: string,
     })
     .from(conversationMessages)
     .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
     .where(
       and(
-        eq(customers.userId, userId),
+        eq(projects.userId, userId),
+        eq(customers.projectId, projectId),
         eq(conversationMessages.customerId, customerId),
         eq(conversationMessages.id, messageId)
       )
@@ -393,7 +401,7 @@ export async function getConversationMessage(userId: string, customerId: string,
   return hydrated ?? null;
 }
 
-export async function getConversationAttachment(userId: string, attachmentId: string) {
+export async function getConversationAttachment(userId: string, projectId: string, attachmentId: string) {
   const [attachment] = await db
     .select({
       id: conversationAttachments.id,
@@ -408,7 +416,8 @@ export async function getConversationAttachment(userId: string, attachmentId: st
     .from(conversationAttachments)
     .innerJoin(conversationMessages, eq(conversationAttachments.messageId, conversationMessages.id))
     .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
-    .where(and(eq(customers.userId, userId), eq(conversationAttachments.id, attachmentId)))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(customers.projectId, projectId), eq(conversationAttachments.id, attachmentId)))
     .limit(1);
 
   return attachment ?? null;

@@ -151,16 +151,16 @@ export const customers = pgTable(
   "customers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    projectId: uuid("project_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     descriptionMarkdown: text("description_markdown").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => ({
-    userIdIdx: index("customers_user_id_idx").on(table.userId),
+    projectIdIdx: index("customers_project_id_idx").on(table.projectId),
     nameIdx: index("customers_name_idx").on(table.name)
   })
 );
@@ -169,19 +169,19 @@ export const conversationPeople = pgTable(
   "conversation_people",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    projectId: uuid("project_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => projects.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     normalizedName: text("normalized_name").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => ({
-    userIdIdx: index("conversation_people_user_id_idx").on(table.userId),
+    projectIdIdx: index("conversation_people_project_id_idx").on(table.projectId),
     nameIdx: index("conversation_people_name_idx").on(table.name),
-    normalizedNameUnique: uniqueIndex("conversation_people_user_normalized_name_idx").on(
-      table.userId,
+    normalizedNameUnique: uniqueIndex("conversation_people_project_normalized_name_idx").on(
+      table.projectId,
       table.normalizedName
     )
   })
@@ -248,14 +248,14 @@ export const conversationAttachments = pgTable(
 export const projectRelations = relations(projects, ({ many }) => ({
   components: many(components),
   tasks: many(tasks),
-  expenses: many(expenses)
+  expenses: many(expenses),
+  customers: many(customers),
+  conversationPeople: many(conversationPeople)
 }));
 
 export const userRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
-  projects: many(projects),
-  customers: many(customers),
-  conversationPeople: many(conversationPeople)
+  projects: many(projects)
 }));
 
 export const sessionRelations = relations(sessions, ({ one }) => ({
@@ -308,17 +308,17 @@ export const expenseArtifactRelations = relations(expenseArtifacts, ({ one }) =>
 }));
 
 export const customerRelations = relations(customers, ({ one, many }) => ({
-  user: one(users, {
-    fields: [customers.userId],
-    references: [users.id]
+  project: one(projects, {
+    fields: [customers.projectId],
+    references: [projects.id]
   }),
   messages: many(conversationMessages)
 }));
 
 export const conversationPersonRelations = relations(conversationPeople, ({ one, many }) => ({
-  user: one(users, {
-    fields: [conversationPeople.userId],
-    references: [users.id]
+  project: one(projects, {
+    fields: [conversationPeople.projectId],
+    references: [projects.id]
   }),
   messagePeople: many(conversationMessagePeople)
 }));

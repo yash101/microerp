@@ -128,7 +128,7 @@ export default async function ProjectPage({
               <ButtonLink href={`/projects/${project.id}/expenses`} tone="secondary">
                 Expenses
               </ButtonLink>
-              <ButtonLink href="/conversations" tone="secondary">
+              <ButtonLink href={`/projects/${project.id}/conversations`} tone="secondary">
                 Conversations
               </ButtonLink>
               <ButtonLink href={`/projects/${project.id}/components`} tone="secondary">

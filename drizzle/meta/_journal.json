@@ -43,6 +43,13 @@
       "when": 1778371200003,
       "tag": "0005_customer_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779148800000,
+      "tag": "0006_project_scoped_conversations",
+      "breakpoints": true
     }
   ]
 }

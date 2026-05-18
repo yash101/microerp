@@ -8,30 +8,55 @@ Just a tiny simple app for resource planning, prioritization and basic expense t
 
 Called Jankdrive, named after SpaceX warpdrive, which has little to nothing in common, except the name, which is where the similarities end.
 
-You can think of it as that junkyard car you bought, but it has an engine, but the transmission blew up so you have to push it to your destination.
-
-## Goal / why
-
-I'm building a startup and just needed a simple tool to track, prioritize and optimize work for me. So this idea was born.
-
-It does the bare minimum and is probably perfect for pre-seed companies. Want more? Use something proper like Jira or literally anything else.
+You can think of it as that junkyard car you bought. It has an engine which works, but the transmission blew up so you have to push it to your destination.
 
 ## Features
 
 * Projects & task tracking
 * Gantt chart
 * Basic expense tracking (not audit grade, again switch to something proper)
+* Project-scoped customer conversation tracking (not a CRM. More a "write down what customers said before you forget" feature)
 * Heuristic-based auto-prioritization (though low key it's just meh rn)
+* Rocket man freaking out as he gets hurled in every single direction
 
-## Features tbd
+## Public cluster
 
-* Customer engagement tracking - potential new thing to add. As I discuss with customers, would be cool to track that and keep a timeline of events n stuff
+I have this app deployed to a public facing server. Before you get access, understand the following:
+
+1. No data protection guarantees
+  * Your data may be seen/inspected
+  * Database might blow up
+  * Database might get hacked
+  * We do *nothing* to stop that
+2. App is bleeding edge: things may break without warning
+3. Database is currently *not* backed up. Still identifying how to make that work but there will be minumum effort towards that for the next month.
+
+Signup is gated behind a signup code because I enjoy having at least some control over my infrastructure. If you want access, please email me, and include
+an agreement of the terms listed above in this section. My email is in my GitHub, so do a bit of scoping before you raise a ticket (bots be wildin' these days)
+
+If I decide to give you access, you will be given access to a URL and a signup code.
+
+**Alternatively, just deploy it yourself. Again, I'm not your mom.**
 
 ## Anti-features
 
-* No sharing ability. User owns 0+ projects. If you're building a startup, you gotta share the account creds.
-* Password reset & stuff - yeah doesn't exist. It's 2026, just *don't* forget your username and password. And yeah no way for us to effectively recover your account if that happens.
-  * Also this means no emails or anything from us.
+* User signed into the platform owns projects. Projects cannot be shared across users. If you're building a startup, you gotta share the account creds.
+* Password reset & stuff - yeah doesn't exist.
+  * It's 2026, just *don't* forget your username and passwordd
+  * Use a password manager, Bob
+  * And yeah no way for us to effectively recover your account if that happens
+* No emails or notifications or anything. We're not your mom.
+* Dark theme. **THERE WILL BE NO DARK THEME.**
+
+## Design Goal
+
+I'm building a startup and just needed a simple tool to track, prioritize and optimize work for me. So this idea was born.
+
+This app isn't meant to be a startup, replace SAP or solve world hunger. It's kinda like Hinge where it's "*designed to be deleted*", but unlike Hinge
+where it actually gets deleted.
+
+This does the bare minimum and is probably perfect for pre-seed / pre-idea / pre-"founder was born" startups. Need more features? Use something proper
+like Jira, SAP, Odoo, or literally anything else.
 
 ## Running locally
 
@@ -107,86 +132,14 @@ kubectl --context ${kube_context} -n microerp logs job/microerp-migrate
 kubectl --context ${kube_context} -n microerp get pods,jobs,ingress,certificate
 ```
 
----
+## Maintained docs
 
-## (probably) Outdated docs
+Future agents and humans should use these instead of trusting old README design notes:
 
-## Design
-
-Users can have projects (no sharing for now, KISS).
-Projects can have tasks.
-Tasks have information:
-  * Name
-  * Description, markdown
-  * Estimated time requirement
-  * Start date/time
-  * End date/time
-  * Complexity (1-5)
-  * Risk (1-5)
-  * Impact (1-5)
-  * Compute:
-    value = Impact*2 + Differentiation*2
-    cost = Complexity + Risk
-    priority = value / cost
-  * Also add a priority offset
-Tasks can reference 0+ components
-Components have information:
-  * Name
-  * Description, markdown
-
-## Entities
-
-### Project
-- id
-- name
-- description
-- createdAt
-- updatedAt
-
-### Component
-- id
-- projectId
-- name
-- descriptionMarkdown
-- createdAt
-- updatedAt
-
-### Task
-- id
-- projectId
-- name
-- descriptionMarkdown
-- estimatedMinutes
-- startAt
-- endAt
-- complexity: 1-5
-- risk: 1-5
-- impact: 1-5
-- differentiation: 1-5
-- priorityOffset: number
-- status: "candidate" | "included" | "complete" | "cut" | "later"
-- createdAt
-- updatedAt
-
-Computed:
-- value = impact * 2 + differentiation * 2
-- cost = complexity + risk
-- priority = value / cost + priorityOffset
-
-### TaskComponent
-- taskId
-- componentId
-
-## Authn/Authz
-- Username/password signup and login.
-- Passwords are salted and hashed with PBKDF2-SHA-256.
-- Sessions are stored in Postgres as hashed random tokens.
-- Session cookies are HTTP-only, same-site, and secure in production.
-- Projects are scoped to the signed-in user.
-
-## Database
-- Postgres
-- Use Docker Compose to run it locally.
+- [`docs/architecture.md`](docs/architecture.md): app shape, module map, routes, invariants, and non-goals.
+- [`docs/data-model.md`](docs/data-model.md): tables, relationships, statuses, lifecycle rules, and schema quirks.
+- [`docs/implementation-notes.md`](docs/implementation-notes.md): current decisions, sharp edges, migrations, and where to inspect first.
+- [`docs/deploy-kubernetes.md`](docs/deploy-kubernetes.md): notes for the single-server Kubernetes deployment.
 
 ## Cloudflare deployment
 

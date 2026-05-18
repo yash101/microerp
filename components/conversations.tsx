@@ -44,15 +44,17 @@ function formatBytes(value: number | null) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function attachmentHref(attachment: Pick<ConversationAttachment, "id" | "kind" | "url">) {
-  return attachment.kind === "link" ? attachment.url ?? "#" : `/conversations/attachments/${attachment.id}`;
+function attachmentHref(projectId: string, attachment: Pick<ConversationAttachment, "id" | "kind" | "url">) {
+  return attachment.kind === "link" ? attachment.url ?? "#" : `/projects/${projectId}/conversations/attachments/${attachment.id}`;
 }
 
 export function ConversationTimeline({
+  projectId,
   messages,
   emptyState,
   showCustomer = true
 }: {
+  projectId: string;
   messages: TimelineMessage[];
   emptyState: ReactNode;
   showCustomer?: boolean;
@@ -73,7 +75,7 @@ export function ConversationTimeline({
                 <h3 className="mt-1 text-lg font-semibold">
                   <Link
                     className="underline decoration-ink/20 underline-offset-4 hover:decoration-ink"
-                    href={`/conversations/customers/${message.customerId}/messages/${message.id}/edit`}
+                    href={`/projects/${projectId}/conversations/customers/${message.customerId}/messages/${message.id}/edit`}
                   >
                     {message.title}
                   </Link>
@@ -81,7 +83,7 @@ export function ConversationTimeline({
                 {showCustomer ? (
                   <Link
                     className="mt-1 inline-flex text-sm font-medium text-moss hover:underline"
-                    href={`/conversations/customers/${message.customer.id}`}
+                    href={`/projects/${projectId}/conversations/customers/${message.customer.id}`}
                   >
                     {message.customer.name}
                   </Link>
@@ -111,7 +113,7 @@ export function ConversationTimeline({
                 {message.attachments.map((attachment) => (
                   <a
                     key={attachment.id}
-                    href={attachmentHref(attachment)}
+                    href={attachmentHref(projectId, attachment)}
                     className="rounded-md border border-ink/15 bg-paper px-3 py-2 text-sm font-medium hover:border-ink/30"
                     target={attachment.kind === "link" ? "_blank" : undefined}
                     rel={attachment.kind === "link" ? "noreferrer" : undefined}

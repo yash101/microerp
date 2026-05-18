@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 
-export function Rocket(props) {
+export function Rocket() {
   const [animationKey, setAnimationKey] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [randomRotation, setRandomRotation] = useState(0);

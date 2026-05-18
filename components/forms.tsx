@@ -100,8 +100,8 @@ export function ComponentForm({
   );
 }
 
-export function CustomerForm({ customer }: { customer?: Customer }) {
-  const action = customer ? updateCustomerAction.bind(null, customer.id) : createCustomerAction;
+export function CustomerForm({ projectId, customer }: { projectId: string; customer?: Customer }) {
+  const action = customer ? updateCustomerAction.bind(null, projectId, customer.id) : createCustomerAction.bind(null, projectId);
   return (
     <form action={action} className="grid gap-4">
       <Field label="Name">
@@ -120,9 +120,11 @@ export function CustomerForm({ customer }: { customer?: Customer }) {
 }
 
 export function ConversationMessageForm({
+  projectId,
   customerId,
   message
 }: {
+  projectId: string;
   customerId: string;
   message?: ConversationMessage & {
     people?: Pick<ConversationPerson, "id" | "name">[];
@@ -133,8 +135,8 @@ export function ConversationMessageForm({
   };
 }) {
   const action = message
-    ? updateConversationMessageAction.bind(null, customerId, message.id)
-    : createConversationMessageAction.bind(null, customerId);
+    ? updateConversationMessageAction.bind(null, projectId, customerId, message.id)
+    : createConversationMessageAction.bind(null, projectId, customerId);
   const linkAttachments = message?.attachments?.filter((attachment) => attachment.kind === "link") ?? [];
 
   return (

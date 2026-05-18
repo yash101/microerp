@@ -133,11 +133,12 @@ function normalizedPersonName(name: string) {
   return name.trim().toLocaleLowerCase();
 }
 
-async function assertCustomerForUser(userId: string, customerId: string) {
+async function assertCustomerForProject(userId: string, projectId: string, customerId: string) {
   const [customer] = await db
     .select({ id: customers.id })
     .from(customers)
-    .where(and(eq(customers.userId, userId), eq(customers.id, customerId)))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
+    .where(and(eq(projects.userId, userId), eq(customers.projectId, projectId), eq(customers.id, customerId)))
     .limit(1);
 
   if (!customer) {
@@ -145,14 +146,16 @@ async function assertCustomerForUser(userId: string, customerId: string) {
   }
 }
 
-async function getConversationMessageForUser(userId: string, customerId: string, messageId: string) {
+async function getConversationMessageForProject(userId: string, projectId: string, customerId: string, messageId: string) {
   const [message] = await db
     .select({ id: conversationMessages.id })
     .from(conversationMessages)
     .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
+    .innerJoin(projects, eq(customers.projectId, projects.id))
     .where(
       and(
-        eq(customers.userId, userId),
+        eq(projects.userId, userId),
+        eq(customers.projectId, projectId),
         eq(conversationMessages.customerId, customerId),
         eq(conversationMessages.id, messageId)
       )
@@ -166,11 +169,11 @@ async function getConversationMessageForUser(userId: string, customerId: string,
   return message;
 }
 
-async function personIdsForNames(userId: string, names: string[]) {
+async function personIdsForNames(projectId: string, names: string[]) {
   if (names.length === 0) return [];
 
   const peopleInput = names.map((name) => ({
-    userId,
+    projectId,
     name,
     normalizedName: normalizedPersonName(name)
   }));
@@ -180,13 +183,13 @@ async function personIdsForNames(userId: string, names: string[]) {
     .insert(conversationPeople)
     .values(peopleInput)
     .onConflictDoNothing({
-      target: [conversationPeople.userId, conversationPeople.normalizedName]
+      target: [conversationPeople.projectId, conversationPeople.normalizedName]
     });
 
   const rows = await db
     .select({ id: conversationPeople.id })
     .from(conversationPeople)
-    .where(and(eq(conversationPeople.userId, userId), inArray(conversationPeople.normalizedName, normalizedNames)));
+    .where(and(eq(conversationPeople.projectId, projectId), inArray(conversationPeople.normalizedName, normalizedNames)));
 
   return rows.map((row) => row.id);
 }
@@ -298,24 +301,25 @@ export async function deleteProjectAction(projectId: string) {
   redirect("/");
 }
 
-export async function createCustomerAction(formData: FormData) {
+export async function createCustomerAction(projectId: string, formData: FormData) {
   const user = await requireSession();
+  await assertProjectForUser(user.id, projectId);
   const input = customerSchema.parse({
     name: formString(formData, "name"),
     descriptionMarkdown: formString(formData, "descriptionMarkdown")
   });
   const [customer] = await db
     .insert(customers)
-    .values({ ...input, userId: user.id })
+    .values({ ...input, projectId })
     .returning({ id: customers.id });
 
-  revalidatePath("/conversations");
-  redirect(`/conversations/customers/${customer.id}`);
+  revalidatePath(`/projects/${projectId}/conversations`);
+  redirect(`/projects/${projectId}/conversations/customers/${customer.id}`);
 }
 
-export async function updateCustomerAction(customerId: string, formData: FormData) {
+export async function updateCustomerAction(projectId: string, customerId: string, formData: FormData) {
   const user = await requireSession();
-  await assertCustomerForUser(user.id, customerId);
+  await assertCustomerForProject(user.id, projectId, customerId);
   const input = customerSchema.parse({
     name: formString(formData, "name"),
     descriptionMarkdown: formString(formData, "descriptionMarkdown")
@@ -324,24 +328,24 @@ export async function updateCustomerAction(customerId: string, formData: FormDat
   await db
     .update(customers)
     .set({ ...input, updatedAt: new Date() })
-    .where(and(eq(customers.userId, user.id), eq(customers.id, customerId)));
+    .where(and(eq(customers.projectId, projectId), eq(customers.id, customerId)));
 
-  revalidatePath("/conversations");
-  revalidatePath(`/conversations/customers/${customerId}`);
-  redirect(`/conversations/customers/${customerId}`);
+  revalidatePath(`/projects/${projectId}/conversations`);
+  revalidatePath(`/projects/${projectId}/conversations/customers/${customerId}`);
+  redirect(`/projects/${projectId}/conversations/customers/${customerId}`);
 }
 
-export async function deleteCustomerAction(customerId: string) {
+export async function deleteCustomerAction(projectId: string, customerId: string) {
   const user = await requireSession();
-  await assertCustomerForUser(user.id, customerId);
-  await db.delete(customers).where(and(eq(customers.userId, user.id), eq(customers.id, customerId)));
-  revalidatePath("/conversations");
-  redirect("/conversations");
+  await assertCustomerForProject(user.id, projectId, customerId);
+  await db.delete(customers).where(and(eq(customers.projectId, projectId), eq(customers.id, customerId)));
+  revalidatePath(`/projects/${projectId}/conversations`);
+  redirect(`/projects/${projectId}/conversations`);
 }
 
-export async function createConversationMessageAction(customerId: string, formData: FormData) {
+export async function createConversationMessageAction(projectId: string, customerId: string, formData: FormData) {
   const user = await requireSession();
-  await assertCustomerForUser(user.id, customerId);
+  await assertCustomerForProject(user.id, projectId, customerId);
   const input = parseConversationMessageForm(formData);
   const [message] = await db
     .insert(conversationMessages)
@@ -353,7 +357,7 @@ export async function createConversationMessageAction(customerId: string, formDa
     })
     .returning({ id: conversationMessages.id });
 
-  const personIds = await personIdsForNames(user.id, input.participantNames);
+  const personIds = await personIdsForNames(projectId, input.participantNames);
   if (personIds.length > 0) {
     await db
       .insert(conversationMessagePeople)
@@ -362,14 +366,14 @@ export async function createConversationMessageAction(customerId: string, formDa
 
   await insertConversationAttachments(message.id, formData);
 
-  revalidatePath("/conversations");
-  revalidatePath(`/conversations/customers/${customerId}`);
-  redirect(`/conversations/customers/${customerId}`);
+  revalidatePath(`/projects/${projectId}/conversations`);
+  revalidatePath(`/projects/${projectId}/conversations/customers/${customerId}`);
+  redirect(`/projects/${projectId}/conversations/customers/${customerId}`);
 }
 
-export async function updateConversationMessageAction(customerId: string, messageId: string, formData: FormData) {
+export async function updateConversationMessageAction(projectId: string, customerId: string, messageId: string, formData: FormData) {
   const user = await requireSession();
-  await getConversationMessageForUser(user.id, customerId, messageId);
+  await getConversationMessageForProject(user.id, projectId, customerId, messageId);
   const input = parseConversationMessageForm(formData);
 
   await db
@@ -383,7 +387,7 @@ export async function updateConversationMessageAction(customerId: string, messag
     .where(and(eq(conversationMessages.customerId, customerId), eq(conversationMessages.id, messageId)));
 
   await db.delete(conversationMessagePeople).where(eq(conversationMessagePeople.messageId, messageId));
-  const personIds = await personIdsForNames(user.id, input.participantNames);
+  const personIds = await personIdsForNames(projectId, input.participantNames);
   if (personIds.length > 0) {
     await db
       .insert(conversationMessagePeople)
@@ -402,21 +406,21 @@ export async function updateConversationMessageAction(customerId: string, messag
   }
   await insertConversationAttachments(messageId, formData);
 
-  revalidatePath("/conversations");
-  revalidatePath(`/conversations/customers/${customerId}`);
-  redirect(`/conversations/customers/${customerId}`);
+  revalidatePath(`/projects/${projectId}/conversations`);
+  revalidatePath(`/projects/${projectId}/conversations/customers/${customerId}`);
+  redirect(`/projects/${projectId}/conversations/customers/${customerId}`);
 }
 
-export async function deleteConversationMessageAction(customerId: string, messageId: string) {
+export async function deleteConversationMessageAction(projectId: string, customerId: string, messageId: string) {
   const user = await requireSession();
-  await getConversationMessageForUser(user.id, customerId, messageId);
+  await getConversationMessageForProject(user.id, projectId, customerId, messageId);
   await db
     .delete(conversationMessages)
     .where(and(eq(conversationMessages.customerId, customerId), eq(conversationMessages.id, messageId)));
 
-  revalidatePath("/conversations");
-  revalidatePath(`/conversations/customers/${customerId}`);
-  redirect(`/conversations/customers/${customerId}`);
+  revalidatePath(`/projects/${projectId}/conversations`);
+  revalidatePath(`/projects/${projectId}/conversations/customers/${customerId}`);
+  redirect(`/projects/${projectId}/conversations/customers/${customerId}`);
 }
 
 export async function createComponentAction(projectId: string, formData: FormData) {
