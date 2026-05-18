@@ -69,6 +69,14 @@ function buildGanttTasks<T extends { startAt: Date | null; endAt: Date | null; s
   return { datedTasks, rangeStart, rangeEnd };
 }
 
+function amountValue(amount: string) {
+  return Number.parseFloat(amount);
+}
+
+function expensingAmount(expense: { amount: string; businessUsePercentage: string }) {
+  return amountValue(expense.amount) * (Number.parseFloat(expense.businessUsePercentage) / 100);
+}
+
 export default async function ProjectPage({
   params
 }: {
@@ -146,6 +154,11 @@ export default async function ProjectPage({
             <Metric label="Tasks" value={taskRows.length} />
             <Metric label="Components" value={componentRows.length} />
             <Metric label="Expenses" value={expenseRows.length} />
+            <Metric
+              label="Expensing"
+              value={Math.round(expenseRows.reduce((sum, expense) => sum + expensingAmount(expense), 0))}
+              suffix="USD"
+            />
             <Metric
               label="Included effort"
               value={taskRows

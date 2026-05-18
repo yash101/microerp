@@ -30,6 +30,9 @@ export async function GET(
   const artifact = await getExpenseArtifact(user.id, projectId, artifactId);
 
   if (!artifact) notFound();
+  if (!artifact.dataBase64 || !artifact.fileName || !artifact.contentType || artifact.byteSize === null) {
+    notFound();
+  }
 
   return new Response(base64ToBytes(artifact.dataBase64), {
     headers: {

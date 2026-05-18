@@ -9,13 +9,16 @@
 - Drizzle schema changes should be generated with `npm run db:generate` and applied with `npm run db:migrate`.
 - Task priority is deliberately heuristic and recalculated on read.
 - Expense tracking is reimbursement/status tracking, not accounting.
+- Expense tax fields are metadata only. Do not add deduction/depreciation/tax filing calculations.
 - Conversation tracking is project-scoped memory aid, not a CRM.
+- Attachments use a shared append-only table. Do not update or delete `attachments` rows from app code; remove rows from association tables instead.
 
 ## Sharp Edges
 
 - `projects.userId` is nullable in the database, but normal app creation always sets it. Queries only show projects matching the signed-in user.
 - Expense and conversation upload action code allows files up to 5 MB, but `next.config.mjs` sets the server action body limit to 2 MB.
 - File uploads are stored as base64 in Postgres. This is simple but not space-efficient.
+- The `attachments` table is append-only by convention, not by trigger or permissions.
 - `wrangler.jsonc` includes an uncommented instructional line before the `hyperdrive` key; verify the file before relying on Wrangler parsing.
 - Password reset does not exist. Losing credentials means losing access unless someone manually edits data.
 - Sessions expire after 14 days and are not refreshed on read.
@@ -33,6 +36,8 @@
   - `0004_add_expense_recipient`: expense recipient.
   - `0005_customer_conversations`: customers, conversation people/messages/attachments.
   - `0006_project_scoped_conversations`: renames old user-scoped conversation tables to `orphaned_*` and creates fresh project-scoped conversation tables.
+  - `0007_append_only_attachments`: moves expense and conversation payload columns into shared `attachments` rows and leaves association tables pointing at them.
+  - `0008_expense_tax_metadata`: adds business-use percentage, sales tax paid, tax treatment enum, and other tax treatment text.
 - Keep migrations boring and forward-only.
 - If a future field is ambiguous, prefer `review_needed` or a notes field before adding workflow machinery.
 - Update `docs/data-model.md` in the same change as schema or lifecycle changes.
@@ -59,3 +64,5 @@
 
 - 2026-05-18: Created implementation notes from current code and agent configuration.
 - 2026-05-18: Documented project-scoped conversation routing and the orphaned-table migration.
+- 2026-05-18: Documented shared append-only attachment storage and association-only deletes.
+- 2026-05-18: Documented expense tax metadata as storage-only, with business-use expensing display totals.

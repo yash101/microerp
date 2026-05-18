@@ -52,6 +52,10 @@ const validExpense = {
   recipient: "Jamie Lee",
   category: "Supplies",
   amount: "42.50",
+  businessUsePercentage: "100",
+  salesTaxPaid: "3.50",
+  taxTreatment: "ordinary_expense",
+  taxTreatmentOther: "",
   spentAt: "2026-05-10",
   status: "draft",
   notes: ""
@@ -61,6 +65,12 @@ describe("expenseSchema", () => {
   it("requires a recipient", () => {
     expect(expenseSchema.parse(validExpense).recipient).toBe("Jamie Lee");
     expect(() => expenseSchema.parse({ ...validExpense, recipient: "" })).toThrow();
+  });
+
+  it("validates business use and other tax treatment", () => {
+    expect(expenseSchema.parse({ ...validExpense, businessUsePercentage: "75" }).businessUsePercentage).toBe(75);
+    expect(() => expenseSchema.parse({ ...validExpense, businessUsePercentage: "101" })).toThrow();
+    expect(() => expenseSchema.parse({ ...validExpense, taxTreatment: "other", taxTreatmentOther: "" })).toThrow();
   });
 });
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { expenseStatusEnum, taskStatusEnum } from "@/db/schema";
+import { expenseStatusEnum, taskStatusEnum, taxTreatmentEnum } from "@/db/schema";
 
 const requiredText = z.string().trim().min(1, "Required");
 const markdown = z.string().max(20000).default("");
@@ -51,15 +51,24 @@ export const conversationMessageSchema = z.object({
   keepAttachmentIds: z.array(z.string().uuid()).default([])
 });
 
-export const expenseSchema = z.object({
-  vendor: requiredText,
-  recipient: requiredText,
-  category: requiredText.default("General"),
-  amount: z.coerce.number().positive().max(9999999999.99),
-  spentAt: optionalDate.refine((value) => value !== null, "Required"),
-  status: z.enum(expenseStatusEnum.enumValues),
-  notes: markdown
-});
+export const expenseSchema = z
+  .object({
+    vendor: requiredText,
+    recipient: requiredText,
+    category: requiredText.default("General"),
+    amount: z.coerce.number().positive().max(9999999999.99),
+    businessUsePercentage: z.coerce.number().min(0).max(100),
+    salesTaxPaid: z.coerce.number().min(0).max(9999999999.99),
+    taxTreatment: z.enum(taxTreatmentEnum.enumValues),
+    taxTreatmentOther: z.string().trim().max(500).default(""),
+    spentAt: optionalDate.refine((value) => value !== null, "Required"),
+    status: z.enum(expenseStatusEnum.enumValues),
+    notes: markdown
+  })
+  .refine((data) => data.taxTreatment !== "other" || data.taxTreatmentOther.length > 0, {
+    message: "Add tax notes when using Other",
+    path: ["taxTreatmentOther"]
+  });
 
 export const taskSchema = z
   .object({
@@ -109,6 +118,10 @@ export function parseExpenseForm(formData: FormData) {
     recipient: formString(formData, "recipient"),
     category: formString(formData, "category") || "General",
     amount: formString(formData, "amount"),
+    businessUsePercentage: formString(formData, "businessUsePercentage") || "100",
+    salesTaxPaid: formString(formData, "salesTaxPaid") || "0",
+    taxTreatment: formString(formData, "taxTreatment") || "review_needed",
+    taxTreatmentOther: formString(formData, "taxTreatmentOther"),
     spentAt: formString(formData, "spentAt"),
     status: formString(formData, "status") || "draft",
     notes: formString(formData, "notes")

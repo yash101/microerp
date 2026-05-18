@@ -1,7 +1,7 @@
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import type { ReactNode } from "react";
-import type { ConversationAttachment } from "@/db/schema";
+import type { Attachment, ConversationAttachment } from "@/db/schema";
 
 export type TimelineMessage = {
   id: string;
@@ -19,10 +19,10 @@ export type TimelineMessage = {
     id: string;
     name: string;
   }[];
-  attachments: Pick<
-    ConversationAttachment,
-    "id" | "messageId" | "kind" | "label" | "url" | "fileName" | "contentType" | "byteSize" | "createdAt"
-  >[];
+  attachments: Array<
+    Pick<ConversationAttachment, "id" | "messageId" | "createdAt"> &
+      Pick<Attachment, "kind" | "label" | "url" | "fileName" | "contentType" | "byteSize">
+  >;
 };
 
 function formatDateTime(value: Date | string) {
@@ -44,7 +44,7 @@ function formatBytes(value: number | null) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function attachmentHref(projectId: string, attachment: Pick<ConversationAttachment, "id" | "kind" | "url">) {
+function attachmentHref(projectId: string, attachment: Pick<ConversationAttachment, "id"> & Pick<Attachment, "kind" | "url">) {
   return attachment.kind === "link" ? attachment.url ?? "#" : `/projects/${projectId}/conversations/attachments/${attachment.id}`;
 }
 

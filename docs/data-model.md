@@ -59,15 +59,19 @@
 ## Expenses
 
 - `expenses`
-  - Fields: `id`, `projectId`, `vendor`, `recipient`, `category`, `amount`, `spentAt`, `status`, `notes`, `createdAt`, `updatedAt`.
+  - Fields: `id`, `projectId`, `vendor`, `recipient`, `category`, `amount`, `businessUsePercentage`, `salesTaxPaid`, `taxTreatment`, `taxTreatmentOther`, `spentAt`, `status`, `notes`, `createdAt`, `updatedAt`.
   - Expenses belong to one project and cascade when the project is deleted.
   - `category` defaults to `General`.
   - `amount` is numeric with two decimal places.
+  - `businessUsePercentage` defaults to `100` and is used for displayed expensing totals.
+  - Expensing amount is `amount * businessUsePercentage / 100`.
+  - `salesTaxPaid` defaults to `0` and is stored for reference only.
+  - `taxTreatmentOther` is shown as Tax Notes in the UI and is required by validation when `taxTreatment` is `other`.
   - Draft expenses are the only expenses that can be edited.
 - `expense_artifacts`
-  - Fields: `id`, `expenseId`, `fileName`, `contentType`, `byteSize`, `dataBase64`, `createdAt`.
+  - Fields: `id`, `expenseId`, `attachmentId`, `createdAt`.
   - Artifacts belong to one expense and cascade when the expense is deleted.
-  - Files are stored in Postgres as base64 text.
+  - `attachmentId` points to the immutable attachment record.
 - `expense_status`
   - `draft`: editable.
   - `submitted`: ready for review.
@@ -81,6 +85,19 @@
   - `rejected -> draft | reimbursed`
   - `reimbursed -> none`
 - Submitting an expense requires vendor, recipient, category, positive amount, and spent date.
+- `tax_treatment`
+  - `ordinary_expense`
+  - `startup_cost`
+  - `organizational_cost`
+  - `capital_asset`
+  - `section_179`
+  - `bonus_depreciation`
+  - `home_office_allocation`
+  - `mixed_use`
+  - `nondeductible`
+  - `review_needed`
+  - `other`
+- Tax treatment values are stored only. The app does not compute depreciation, deductions, limits, or tax filings.
 
 ## Conversations
 
@@ -98,9 +115,18 @@
   - Join table between messages and people.
   - Composite primary key: `messageId`, `personId`.
 - `conversation_attachments`
-  - Fields: `id`, `messageId`, `kind`, `label`, `url`, `fileName`, `contentType`, `byteSize`, `dataBase64`, `createdAt`.
-  - Attachments belong to one message and cascade when the message is deleted.
-- `conversation_attachment_kind`
+  - Fields: `id`, `messageId`, `attachmentId`, `createdAt`.
+  - Attachment associations belong to one message and cascade when the message is deleted.
+  - `attachmentId` points to the immutable attachment record.
+
+## Attachments
+
+- `attachments`
+  - Fields: `id`, `kind`, `label`, `url`, `fileName`, `contentType`, `byteSize`, `dataBase64`, `createdAt`.
+  - This is the shared append-only store for expense receipts and conversation attachments.
+  - Upload payloads are stored as base64 text in Postgres.
+  - Link attachments store a URL and label.
+- `attachment_kind`
   - `upload`: file stored as base64 in Postgres.
   - `link`: external URL with a label.
 
@@ -110,7 +136,8 @@
 - There is no audit trail, soft delete, or event stream.
 - `createdAt` is set by the database and should be treated as historical.
 - `updatedAt` is manually updated by action code on edits.
-- Uploaded file data is replaced by deleting attachment rows or adding new rows; there is no file versioning.
+- Attachment rows are append-only by application convention: write paths insert new rows and never update or delete them.
+- Expense and conversation delete/edit flows remove association rows, leaving `attachments` rows in place for future WAL-based inspection.
 - Migration `0006_project_scoped_conversations` renames the old user-scoped conversation tables to `orphaned_customers`, `orphaned_conversation_people`, `orphaned_conversation_messages`, `orphaned_conversation_message_people`, and `orphaned_conversation_attachments`.
 - The new live conversation tables reuse the original table names and start empty.
 
@@ -118,3 +145,5 @@
 
 - 2026-05-18: Created agent-facing data model notes from current Drizzle schema and server actions.
 - 2026-05-18: Documented project-scoped conversations and orphaned legacy conversation tables.
+- 2026-05-18: Added shared append-only `attachments` table and link-only expense/conversation attachment tables.
+- 2026-05-18: Added expense business-use percentage, sales tax paid, and tax treatment metadata.

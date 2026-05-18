@@ -50,6 +50,20 @@
       "when": 1779148800000,
       "tag": "0006_project_scoped_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779148800001,
+      "tag": "0007_append_only_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779148800002,
+      "tag": "0008_expense_tax_metadata",
+      "breakpoints": true
     }
   ]
 }

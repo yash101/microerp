@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { getProject, listExpenses } from "@/lib/data";
 import { deleteExpenseAction, updateExpenseStatusFromFormAction } from "@/lib/actions";
-import type { ExpenseStatus } from "@/db/schema";
+import type { ExpenseStatus, TaxTreatment } from "@/db/schema";
 import { ExpenseForm } from "@/components/forms";
 import { ButtonLink, EmptyState, PageShell, SubmitButton } from "@/components/ui";
 
@@ -24,6 +24,19 @@ const actionLabels: Record<ExpenseStatus, string> = {
 };
 
 const statuses = Object.keys(statusLabels) as ExpenseStatus[];
+const taxTreatmentLabels: Record<TaxTreatment, string> = {
+  ordinary_expense: "Ordinary expense",
+  startup_cost: "Startup cost",
+  organizational_cost: "Organizational cost",
+  capital_asset: "Capital asset",
+  section_179: "Section 179",
+  bonus_depreciation: "Bonus depreciation",
+  home_office_allocation: "Home office allocation",
+  mixed_use: "Mixed use",
+  nondeductible: "Nondeductible",
+  review_needed: "Review needed",
+  other: "Other"
+};
 
 const nextStatuses: Record<ExpenseStatus, ExpenseStatus[]> = {
   draft: ["submitted"],
@@ -37,6 +50,14 @@ function amountValue(amount: string) {
   return Number.parseFloat(amount);
 }
 
+function expensingAmount(expense: { amount: string; businessUsePercentage: string }) {
+  return amountValue(expense.amount) * (Number.parseFloat(expense.businessUsePercentage) / 100);
+}
+
+function formatPercentage(value: string) {
+  return `${Number.parseFloat(value).toFixed(2)}%`;
+}
+
 function formatCurrency(amount: string | number) {
   const value = typeof amount === "number" ? amount : amountValue(amount);
   return new Intl.NumberFormat("en", { style: "currency", currency: "USD" }).format(value);
@@ -46,7 +67,8 @@ function formatDate(value: Date) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(value);
 }
 
-function formatBytes(value: number) {
+function formatBytes(value: number | null) {
+  if (value === null) return "unknown size";
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
@@ -76,10 +98,10 @@ export default async function ExpensesPage({
 
   if (!project) notFound();
 
-  const total = expenses.reduce((sum, expense) => sum + amountValue(expense.amount), 0);
+  const total = expenses.reduce((sum, expense) => sum + expensingAmount(expense), 0);
   const reimbursed = expenses
     .filter((expense) => expense.status === "reimbursed")
-    .reduce((sum, expense) => sum + amountValue(expense.amount), 0);
+    .reduce((sum, expense) => sum + expensingAmount(expense), 0);
   const open = total - reimbursed;
 
   return (
@@ -95,7 +117,7 @@ export default async function ExpensesPage({
       </div>
 
       <section className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Total tracked" value={formatCurrency(total)} />
+        <Metric label="Total expensing" value={formatCurrency(total)} />
         <Metric label="Open balance" value={formatCurrency(open)} />
         <Metric label="Receipts" value={expenses.reduce((sum, expense) => sum + expense.artifacts.length, 0).toString()} />
       </section>
@@ -151,11 +173,22 @@ export default async function ExpensesPage({
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xl font-bold">{formatCurrency(expense.amount)}</p>
+                      <p className="text-xl font-bold">{formatCurrency(expensingAmount(expense))}</p>
                       <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/50">
                         {statusLabels[expense.status]}
                       </p>
+                      <p className="mt-1 text-xs text-ink/55">
+                        Price {formatCurrency(expense.amount)} x {formatPercentage(expense.businessUsePercentage)}
+                      </p>
                     </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-sm text-ink/65 sm:grid-cols-3">
+                    <span>Sales tax {formatCurrency(expense.salesTaxPaid)}</span>
+                    <span>Tax {taxTreatmentLabels[expense.taxTreatment]}</span>
+                    {expense.taxTreatment === "other" && expense.taxTreatmentOther ? (
+                      <span>Tax Notes: {expense.taxTreatmentOther}</span>
+                    ) : null}
                   </div>
 
                   {expense.notes ? <p className="mt-3 whitespace-pre-wrap text-sm text-ink/70">{expense.notes}</p> : null}
@@ -172,7 +205,7 @@ export default async function ExpensesPage({
                             href={`/projects/${project.id}/expenses/artifacts/${artifact.id}`}
                             className="rounded-md border border-ink/15 bg-paper px-3 py-2 text-sm font-medium hover:border-ink/30"
                           >
-                            {artifact.fileName} / {formatBytes(artifact.byteSize)}
+                            {artifact.fileName ?? "receipt"} / {formatBytes(artifact.byteSize)}
                           </Link>
                         ))}
                       </div>
@@ -182,26 +215,23 @@ export default async function ExpensesPage({
 
                 {expense.status === "reimbursed" ? null : (
                   <div className="grid content-start gap-3">
-                    <form action={updateExpenseStatusFromFormAction.bind(null, project.id, expense.id)}>
-                      <div className="grid grid-cols-1 gap-2">
-                        {nextStatuses[expense.status].map((status) => (
+                    <div className="grid grid-cols-1 gap-2">
+                      {nextStatuses[expense.status].map((status) => (
+                        <form key={status} action={updateExpenseStatusFromFormAction.bind(null, project.id, expense.id)}>
                           <button
-                            key={status}
                             className={statusButtonClass(status, expense.status)}
                             name="status"
                             value={status}
                           >
                             {actionLabels[status]}
                           </button>
-                        ))}
-                        <form action={deleteExpenseAction.bind(null, project.id, expense.id)}>
-                          <SubmitButton tone="danger" className="w-full">
-                            Delete expense
-                          </SubmitButton>
                         </form>
-                      </div>
-                    </form>
-                    <div>
+                      ))}
+                      <form action={deleteExpenseAction.bind(null, project.id, expense.id)}>
+                        <SubmitButton tone="danger" className="w-full">
+                          Delete expense
+                        </SubmitButton>
+                      </form>
                     </div>
                   </div>
                 )}

@@ -14,7 +14,7 @@ You can think of it as that junkyard car you bought. It has an engine which work
 
 * Projects & task tracking
 * Gantt chart
-* Basic expense tracking (not audit grade, again switch to something proper)
+* Basic expense tracking with tax metadata storage (not audit grade, again switch to something proper)
 * Project-scoped customer conversation tracking (not a CRM. More a "write down what customers said before you forget" feature)
 * Heuristic-based auto-prioritization (though low key it's just meh rn)
 * Rocket man freaking out as he gets hurled in every single direction

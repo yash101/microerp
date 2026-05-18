@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
+  attachments,
   conversationAttachments,
   conversationMessagePeople,
   conversationMessages,
@@ -194,6 +195,26 @@ async function personIdsForNames(projectId: string, names: string[]) {
   return rows.map((row) => row.id);
 }
 
+async function insertUploadAttachments(files: File[], fallbackLabel: string) {
+  if (files.length === 0) return [];
+
+  return db
+    .insert(attachments)
+    .values(
+      await Promise.all(
+        files.map(async (file) => ({
+          kind: "upload" as const,
+          label: file.name || fallbackLabel,
+          fileName: file.name || fallbackLabel,
+          contentType: file.type || "application/octet-stream",
+          byteSize: file.size,
+          dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
+        }))
+      )
+    )
+    .returning({ id: attachments.id });
+}
+
 async function insertConversationAttachments(messageId: string, formData: FormData) {
   const files = conversationFiles(formData);
   const input = parseConversationMessageForm(formData);
@@ -202,27 +223,20 @@ async function insertConversationAttachments(messageId: string, formData: FormDa
     throw new Error("Attachment files must be 5 MB or smaller.");
   }
 
-  const uploadAttachments = await Promise.all(
-    files.map(async (file) => ({
-      messageId,
-      kind: "upload" as const,
-      label: file.name || "attachment",
-      fileName: file.name || "attachment",
-      contentType: file.type || "application/octet-stream",
-      byteSize: file.size,
-      dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
-    }))
-  );
-  const linkAttachments = input.attachmentLinks.map((link) => ({
-    messageId,
-    kind: "link" as const,
-    label: link.label,
-    url: link.url
-  }));
-  const attachments = [...uploadAttachments, ...linkAttachments];
+  const uploadAttachments = await insertUploadAttachments(files, "attachment");
+  const linkAttachments =
+    input.attachmentLinks.length > 0
+      ? await db
+          .insert(attachments)
+          .values(input.attachmentLinks.map((link) => ({ kind: "link" as const, label: link.label, url: link.url })))
+          .returning({ id: attachments.id })
+      : [];
+  const attachmentRows = [...uploadAttachments, ...linkAttachments];
 
-  if (attachments.length > 0) {
-    await db.insert(conversationAttachments).values(attachments);
+  if (attachmentRows.length > 0) {
+    await db
+      .insert(conversationAttachments)
+      .values(attachmentRows.map((attachment) => ({ messageId, attachmentId: attachment.id })));
   }
 }
 
@@ -569,6 +583,10 @@ export async function createExpenseAction(projectId: string, formData: FormData)
       recipient: input.recipient,
       category: input.category,
       amount: input.amount.toFixed(2),
+      businessUsePercentage: input.businessUsePercentage.toFixed(2),
+      salesTaxPaid: input.salesTaxPaid.toFixed(2),
+      taxTreatment: input.taxTreatment,
+      taxTreatmentOther: input.taxTreatmentOther,
       spentAt: input.spentAt,
       status: input.status,
       notes: input.notes
@@ -576,16 +594,10 @@ export async function createExpenseAction(projectId: string, formData: FormData)
     .returning({ id: expenses.id });
 
   if (files.length > 0) {
-    const artifacts = await Promise.all(
-      files.map(async (file) => ({
-        expenseId: expense.id,
-        fileName: file.name || "receipt",
-        contentType: file.type || "application/octet-stream",
-        byteSize: file.size,
-        dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
-      }))
-    );
-    await db.insert(expenseArtifacts).values(artifacts);
+    const attachmentRows = await insertUploadAttachments(files, "receipt");
+    await db
+      .insert(expenseArtifacts)
+      .values(attachmentRows.map((attachment) => ({ expenseId: expense.id, attachmentId: attachment.id })));
   }
 
   revalidatePath(`/projects/${projectId}`);
@@ -614,6 +626,10 @@ export async function updateExpenseAction(projectId: string, expenseId: string, 
       recipient: input.recipient,
       category: input.category,
       amount: input.amount.toFixed(2),
+      businessUsePercentage: input.businessUsePercentage.toFixed(2),
+      salesTaxPaid: input.salesTaxPaid.toFixed(2),
+      taxTreatment: input.taxTreatment,
+      taxTreatmentOther: input.taxTreatmentOther,
       spentAt: input.spentAt,
       status: input.status,
       notes: input.notes,
@@ -622,16 +638,10 @@ export async function updateExpenseAction(projectId: string, expenseId: string, 
     .where(and(eq(expenses.projectId, projectId), eq(expenses.id, expenseId)));
 
   if (files.length > 0) {
-    const artifacts = await Promise.all(
-      files.map(async (file) => ({
-        expenseId,
-        fileName: file.name || "receipt",
-        contentType: file.type || "application/octet-stream",
-        byteSize: file.size,
-        dataBase64: bytesToBase64(new Uint8Array(await file.arrayBuffer()))
-      }))
-    );
-    await db.insert(expenseArtifacts).values(artifacts);
+    const attachmentRows = await insertUploadAttachments(files, "receipt");
+    await db
+      .insert(expenseArtifacts)
+      .values(attachmentRows.map((attachment) => ({ expenseId, attachmentId: attachment.id })));
   }
 
   revalidatePath(`/projects/${projectId}`);
@@ -665,6 +675,10 @@ export async function updateExpenseStatusFromFormAction(projectId: string, expen
         recipient: expenses.recipient,
         category: expenses.category,
         amount: expenses.amount,
+        businessUsePercentage: expenses.businessUsePercentage,
+        salesTaxPaid: expenses.salesTaxPaid,
+        taxTreatment: expenses.taxTreatment,
+        taxTreatmentOther: expenses.taxTreatmentOther,
         spentAt: expenses.spentAt
       })
       .from(expenses)
@@ -677,9 +691,13 @@ export async function updateExpenseStatusFromFormAction(projectId: string, expen
       !completeExpense.recipient.trim() ||
       !completeExpense.category.trim() ||
       Number.parseFloat(completeExpense.amount) <= 0 ||
+      Number.parseFloat(completeExpense.businessUsePercentage) < 0 ||
+      Number.parseFloat(completeExpense.businessUsePercentage) > 100 ||
+      Number.parseFloat(completeExpense.salesTaxPaid) < 0 ||
+      (completeExpense.taxTreatment === "other" && !completeExpense.taxTreatmentOther.trim()) ||
       !completeExpense.spentAt
     ) {
-      throw new Error("Fill out vendor, recipient, category, amount, and spent date before submitting.");
+      throw new Error("Fill out vendor, recipient, category, amount, business use, sales tax, tax treatment, and spent date before submitting.");
     }
   }
 

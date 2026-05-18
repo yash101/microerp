@@ -3,6 +3,7 @@ import "server-only";
 import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  attachments,
   conversationAttachments,
   conversationMessagePeople,
   conversationMessages,
@@ -123,16 +124,18 @@ export async function listExpenses(userId: string, projectId: string) {
     .select({
       id: expenseArtifacts.id,
       expenseId: expenseArtifacts.expenseId,
-      fileName: expenseArtifacts.fileName,
-      contentType: expenseArtifacts.contentType,
-      byteSize: expenseArtifacts.byteSize,
+      attachmentId: expenseArtifacts.attachmentId,
+      fileName: attachments.fileName,
+      contentType: attachments.contentType,
+      byteSize: attachments.byteSize,
       createdAt: expenseArtifacts.createdAt
     })
     .from(expenseArtifacts)
+    .innerJoin(attachments, eq(expenseArtifacts.attachmentId, attachments.id))
     .innerJoin(expenses, eq(expenseArtifacts.expenseId, expenses.id))
     .innerJoin(projects, eq(expenses.projectId, projects.id))
     .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId)))
-    .orderBy(asc(expenseArtifacts.fileName));
+    .orderBy(asc(attachments.fileName));
 
   return expenseRows.map(({ expenses: expense }) => ({
     ...expense,
@@ -154,14 +157,16 @@ export async function getExpense(userId: string, projectId: string, expenseId: s
     .select({
       id: expenseArtifacts.id,
       expenseId: expenseArtifacts.expenseId,
-      fileName: expenseArtifacts.fileName,
-      contentType: expenseArtifacts.contentType,
-      byteSize: expenseArtifacts.byteSize,
+      attachmentId: expenseArtifacts.attachmentId,
+      fileName: attachments.fileName,
+      contentType: attachments.contentType,
+      byteSize: attachments.byteSize,
       createdAt: expenseArtifacts.createdAt
     })
     .from(expenseArtifacts)
+    .innerJoin(attachments, eq(expenseArtifacts.attachmentId, attachments.id))
     .where(eq(expenseArtifacts.expenseId, expenseId))
-    .orderBy(asc(expenseArtifacts.fileName));
+    .orderBy(asc(attachments.fileName));
 
   return {
     ...expense.expenses,
@@ -173,12 +178,14 @@ export async function getExpenseArtifact(userId: string, projectId: string, arti
   const [artifact] = await db
     .select({
       id: expenseArtifacts.id,
-      fileName: expenseArtifacts.fileName,
-      contentType: expenseArtifacts.contentType,
-      byteSize: expenseArtifacts.byteSize,
-      dataBase64: expenseArtifacts.dataBase64
+      attachmentId: expenseArtifacts.attachmentId,
+      fileName: attachments.fileName,
+      contentType: attachments.contentType,
+      byteSize: attachments.byteSize,
+      dataBase64: attachments.dataBase64
     })
     .from(expenseArtifacts)
+    .innerJoin(attachments, eq(expenseArtifacts.attachmentId, attachments.id))
     .innerJoin(expenses, eq(expenseArtifacts.expenseId, expenses.id))
     .innerJoin(projects, eq(expenses.projectId, projects.id))
     .where(and(eq(projects.userId, userId), eq(expenses.projectId, projectId), eq(expenseArtifacts.id, artifactId)))
@@ -268,17 +275,19 @@ async function hydrateConversationMessages<
     .select({
       id: conversationAttachments.id,
       messageId: conversationAttachments.messageId,
-      kind: conversationAttachments.kind,
-      label: conversationAttachments.label,
-      url: conversationAttachments.url,
-      fileName: conversationAttachments.fileName,
-      contentType: conversationAttachments.contentType,
-      byteSize: conversationAttachments.byteSize,
+      attachmentId: conversationAttachments.attachmentId,
+      kind: attachments.kind,
+      label: attachments.label,
+      url: attachments.url,
+      fileName: attachments.fileName,
+      contentType: attachments.contentType,
+      byteSize: attachments.byteSize,
       createdAt: conversationAttachments.createdAt
     })
     .from(conversationAttachments)
+    .innerJoin(attachments, eq(conversationAttachments.attachmentId, attachments.id))
     .where(inArray(conversationAttachments.messageId, messageIds))
-    .orderBy(asc(conversationAttachments.label));
+    .orderBy(asc(attachments.label));
 
   return messages.map((message) => ({
     ...message,
@@ -405,15 +414,17 @@ export async function getConversationAttachment(userId: string, projectId: strin
   const [attachment] = await db
     .select({
       id: conversationAttachments.id,
-      kind: conversationAttachments.kind,
-      label: conversationAttachments.label,
-      url: conversationAttachments.url,
-      fileName: conversationAttachments.fileName,
-      contentType: conversationAttachments.contentType,
-      byteSize: conversationAttachments.byteSize,
-      dataBase64: conversationAttachments.dataBase64
+      attachmentId: conversationAttachments.attachmentId,
+      kind: attachments.kind,
+      label: attachments.label,
+      url: attachments.url,
+      fileName: attachments.fileName,
+      contentType: attachments.contentType,
+      byteSize: attachments.byteSize,
+      dataBase64: attachments.dataBase64
     })
     .from(conversationAttachments)
+    .innerJoin(attachments, eq(conversationAttachments.attachmentId, attachments.id))
     .innerJoin(conversationMessages, eq(conversationAttachments.messageId, conversationMessages.id))
     .innerJoin(customers, eq(conversationMessages.customerId, customers.id))
     .innerJoin(projects, eq(customers.projectId, projects.id))

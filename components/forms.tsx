@@ -1,5 +1,6 @@
 import type {
   Component,
+  Attachment,
   ConversationAttachment,
   ConversationMessage,
   ConversationPerson,
@@ -9,7 +10,8 @@ import type {
   ExpenseStatus,
   Project,
   Task,
-  TaskStatus
+  TaskStatus,
+  TaxTreatment
 } from "@/db/schema";
 import {
   createComponentAction,
@@ -37,6 +39,19 @@ import {
 const statuses: TaskStatus[] = ["candidate", "included", "complete", "cut", "later"];
 const expenseStatuses: ExpenseStatus[] = ["draft", "submitted", "approved", "reimbursed", "rejected"];
 const expenseCategories = ["General", "Travel", "Meals", "Software", "Supplies", "Services", "Equipment"];
+const taxTreatments: { value: TaxTreatment; label: string }[] = [
+  { value: "ordinary_expense", label: "Ordinary expense" },
+  { value: "startup_cost", label: "Startup cost" },
+  { value: "organizational_cost", label: "Organizational cost" },
+  { value: "capital_asset", label: "Capital asset" },
+  { value: "section_179", label: "Section 179" },
+  { value: "bonus_depreciation", label: "Bonus depreciation" },
+  { value: "home_office_allocation", label: "Home office allocation" },
+  { value: "mixed_use", label: "Mixed use" },
+  { value: "nondeductible", label: "Nondeductible" },
+  { value: "review_needed", label: "Review needed" },
+  { value: "other", label: "Other" }
+];
 
 function datetimeValue(value: Date | null) {
   if (!value) return "";
@@ -52,7 +67,8 @@ function dateValue(value: Date | null) {
   return local.toISOString().slice(0, 10);
 }
 
-function formatBytes(value: number) {
+function formatBytes(value: number | null) {
+  if (value === null) return "unknown size";
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
@@ -128,10 +144,10 @@ export function ConversationMessageForm({
   customerId: string;
   message?: ConversationMessage & {
     people?: Pick<ConversationPerson, "id" | "name">[];
-    attachments?: Pick<
-      ConversationAttachment,
-      "id" | "kind" | "label" | "url" | "fileName" | "byteSize" | "contentType"
-    >[];
+    attachments?: Array<
+      Pick<ConversationAttachment, "id"> &
+        Pick<Attachment, "kind" | "label" | "url" | "fileName" | "byteSize" | "contentType">
+    >;
   };
 }) {
   const action = message
@@ -217,7 +233,7 @@ export function ExpenseForm({
   expense
 }: {
   projectId: string;
-  expense?: Expense & { artifacts?: Pick<ExpenseArtifact, "id" | "fileName" | "byteSize">[] };
+  expense?: Expense & { artifacts?: Array<Pick<ExpenseArtifact, "id"> & Pick<Attachment, "fileName" | "byteSize">> };
 }) {
   const action = expense
     ? updateExpenseAction.bind(null, projectId, expense.id)
@@ -241,6 +257,29 @@ export function ExpenseForm({
             step="0.01"
             required
             defaultValue={expense?.amount}
+          />
+        </Field>
+        <Field label="Business use %">
+          <input
+            className={inputClass}
+            name="businessUsePercentage"
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            required
+            defaultValue={expense?.businessUsePercentage ?? "100"}
+          />
+        </Field>
+        <Field label="Sales tax paid">
+          <input
+            className={inputClass}
+            name="salesTaxPaid"
+            type="number"
+            min="0"
+            step="0.01"
+            required
+            defaultValue={expense?.salesTaxPaid ?? "0"}
           />
         </Field>
         <Field label="Spent date">
@@ -270,6 +309,26 @@ export function ExpenseForm({
         </Field>
         <Field label="Receipts" hint="Attach PDF, image, or document files up to 5 MB each.">
           <input className={inputClass} name="artifacts" type="file" multiple />
+        </Field>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Tax treatment">
+          <select className={inputClass} name="taxTreatment" defaultValue={expense?.taxTreatment ?? "review_needed"}>
+            {taxTreatments.map((treatment) => (
+              <option key={treatment.value} value={treatment.value}>
+                {treatment.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Tax Notes" hint="Required only when Tax treatment is Other. No tax math happens here.">
+          <input
+            className={inputClass}
+            name="taxTreatmentOther"
+            defaultValue={expense?.taxTreatmentOther}
+            placeholder="Notes for custom or review-needed treatment"
+          />
         </Field>
       </div>
 

@@ -14,7 +14,20 @@ import { relations } from "drizzle-orm";
 
 export const taskStatusEnum = pgEnum("task_status", ["candidate", "included", "complete", "cut", "later"]);
 export const expenseStatusEnum = pgEnum("expense_status", ["draft", "submitted", "approved", "reimbursed", "rejected"]);
-export const conversationAttachmentKindEnum = pgEnum("conversation_attachment_kind", ["upload", "link"]);
+export const attachmentKindEnum = pgEnum("attachment_kind", ["upload", "link"]);
+export const taxTreatmentEnum = pgEnum("tax_treatment", [
+  "ordinary_expense",
+  "startup_cost",
+  "organizational_cost",
+  "capital_asset",
+  "section_179",
+  "bonus_depreciation",
+  "home_office_allocation",
+  "mixed_use",
+  "nondeductible",
+  "review_needed",
+  "other"
+]);
 
 export const users = pgTable(
   "users",
@@ -116,6 +129,10 @@ export const expenses = pgTable(
     recipient: text("recipient").notNull().default(""),
     category: text("category").notNull().default("General"),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    businessUsePercentage: numeric("business_use_percentage", { precision: 5, scale: 2 }).notNull().default("100"),
+    salesTaxPaid: numeric("sales_tax_paid", { precision: 12, scale: 2 }).notNull().default("0"),
+    taxTreatment: taxTreatmentEnum("tax_treatment").notNull().default("review_needed"),
+    taxTreatmentOther: text("tax_treatment_other").notNull().default(""),
     spentAt: timestamp("spent_at", { withTimezone: true }).notNull(),
     status: expenseStatusEnum("status").notNull().default("draft"),
     notes: text("notes").notNull().default(""),
@@ -129,6 +146,25 @@ export const expenses = pgTable(
   })
 );
 
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    kind: attachmentKindEnum("kind").notNull(),
+    label: text("label").notNull(),
+    url: text("url"),
+    fileName: text("file_name"),
+    contentType: text("content_type"),
+    byteSize: integer("byte_size"),
+    dataBase64: text("data_base64"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    kindIdx: index("attachments_kind_idx").on(table.kind),
+    createdAtIdx: index("attachments_created_at_idx").on(table.createdAt)
+  })
+);
+
 export const expenseArtifacts = pgTable(
   "expense_artifacts",
   {
@@ -136,14 +172,14 @@ export const expenseArtifacts = pgTable(
     expenseId: uuid("expense_id")
       .notNull()
       .references(() => expenses.id, { onDelete: "cascade" }),
-    fileName: text("file_name").notNull(),
-    contentType: text("content_type").notNull(),
-    byteSize: integer("byte_size").notNull(),
-    dataBase64: text("data_base64").notNull(),
+    attachmentId: uuid("attachment_id")
+      .notNull()
+      .references(() => attachments.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => ({
-    expenseIdIdx: index("expense_artifacts_expense_id_idx").on(table.expenseId)
+    expenseIdIdx: index("expense_artifacts_expense_id_idx").on(table.expenseId),
+    attachmentIdIdx: index("expense_artifacts_attachment_id_idx").on(table.attachmentId)
   })
 );
 
@@ -230,18 +266,14 @@ export const conversationAttachments = pgTable(
     messageId: uuid("message_id")
       .notNull()
       .references(() => conversationMessages.id, { onDelete: "cascade" }),
-    kind: conversationAttachmentKindEnum("kind").notNull(),
-    label: text("label").notNull(),
-    url: text("url"),
-    fileName: text("file_name"),
-    contentType: text("content_type"),
-    byteSize: integer("byte_size"),
-    dataBase64: text("data_base64"),
+    attachmentId: uuid("attachment_id")
+      .notNull()
+      .references(() => attachments.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
   },
   (table) => ({
     messageIdIdx: index("conversation_attachments_message_id_idx").on(table.messageId),
-    kindIdx: index("conversation_attachments_kind_idx").on(table.kind)
+    attachmentIdIdx: index("conversation_attachments_attachment_id_idx").on(table.attachmentId)
   })
 );
 
@@ -304,7 +336,16 @@ export const expenseArtifactRelations = relations(expenseArtifacts, ({ one }) =>
   expense: one(expenses, {
     fields: [expenseArtifacts.expenseId],
     references: [expenses.id]
+  }),
+  attachment: one(attachments, {
+    fields: [expenseArtifacts.attachmentId],
+    references: [attachments.id]
   })
+}));
+
+export const attachmentRelations = relations(attachments, ({ many }) => ({
+  expenseArtifacts: many(expenseArtifacts),
+  conversationAttachments: many(conversationAttachments)
 }));
 
 export const customerRelations = relations(customers, ({ one, many }) => ({
@@ -347,6 +388,10 @@ export const conversationAttachmentRelations = relations(conversationAttachments
   message: one(conversationMessages, {
     fields: [conversationAttachments.messageId],
     references: [conversationMessages.id]
+  }),
+  attachment: one(attachments, {
+    fields: [conversationAttachments.attachmentId],
+    references: [attachments.id]
   })
 }));
 
@@ -354,6 +399,7 @@ export type Project = typeof projects.$inferSelect;
 export type Component = typeof components.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
+export type Attachment = typeof attachments.$inferSelect;
 export type ExpenseArtifact = typeof expenseArtifacts.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type ConversationPerson = typeof conversationPeople.$inferSelect;
@@ -363,4 +409,5 @@ export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type TaskStatus = (typeof taskStatusEnum.enumValues)[number];
 export type ExpenseStatus = (typeof expenseStatusEnum.enumValues)[number];
-export type ConversationAttachmentKind = (typeof conversationAttachmentKindEnum.enumValues)[number];
+export type AttachmentKind = (typeof attachmentKindEnum.enumValues)[number];
+export type TaxTreatment = (typeof taxTreatmentEnum.enumValues)[number];

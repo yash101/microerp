@@ -5,7 +5,8 @@ import { getExpense, getProject } from "@/lib/data";
 import { ExpenseForm } from "@/components/forms";
 import { ButtonLink, PageShell } from "@/components/ui";
 
-function formatBytes(value: number) {
+function formatBytes(value: number | null) {
+  if (value === null) return "unknown size";
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
@@ -53,7 +54,7 @@ export default async function EditExpensePage({
                 href={`/projects/${project.id}/expenses/artifacts/${artifact.id}`}
                 className="rounded-md border border-ink/15 bg-paper px-3 py-2 text-sm font-medium hover:border-ink/30"
               >
-                {artifact.fileName} / {formatBytes(artifact.byteSize)}
+                {artifact.fileName ?? "receipt"} / {formatBytes(artifact.byteSize)}
               </Link>
             ))}
           </div>

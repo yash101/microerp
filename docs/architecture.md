@@ -72,9 +72,12 @@
 - Session cookies store only random session tokens; Postgres stores token hashes.
 - Project-scoped writes should verify the project belongs to the signed-in user before mutating.
 - Component IDs submitted with task forms are filtered to components in the same project.
-- Expense and conversation uploads are stored as base64 text in Postgres and capped at 5 MB by action code.
+- Expense and conversation uploads are stored as append-only `attachments` rows with base64 payloads in Postgres and capped at 5 MB by action code.
+- Expense artifacts and conversation attachments are association rows that point to `attachments`; deleting or unchecking an attachment removes the association, not the attachment row.
 - Next server actions have a 2 MB body limit in `next.config.mjs`; that can conflict with the 5 MB upload cap.
 - Task priority is computed at read time, not stored.
+- Expense expensing totals are `amount * businessUsePercentage / 100`.
+- Tax treatment fields are stored as notes/metadata only; the app does not calculate taxes, depreciation, deductions, or filing positions.
 - The old user-scoped conversation tables are intentionally orphaned as `orphaned_*` tables by migration `0006_project_scoped_conversations`.
 
 ## Non-Goals
@@ -85,9 +88,12 @@
 - No full audit log or event sourcing.
 - No complex permissions or project sharing.
 - No accounting automation.
+- No tax computation or tax advice.
 - No password reset, email, notifications, or dark theme.
 
 ## Last Updated
 
 - 2026-05-18: Created agent-facing architecture notes from current code and agent configuration.
 - 2026-05-18: Updated conversations to be project-scoped and documented orphaned legacy tables.
+- 2026-05-18: Added shared append-only attachment storage for expense and conversation attachments.
+- 2026-05-18: Added basic expense tax metadata and business-use expensing totals.
